@@ -1,17 +1,17 @@
 # js-to-scratch
 
-🎨 A translator that converts JavaScript code to Scratch 3.0 projects
+A translator that converts JavaScript code to Scratch 3.0 projects
 
 This project aims to translate JavaScript projects into Scratch projects with support for both command-line interface and a beautiful web UI with glass design.
 
 ## Features
 
-- ✨ **Dual Interface**: Command-line tool and web-based drag-and-drop interface
-- 🎨 **Glass UI Design**: Modern, elegant web interface with glass morphism
-- 🔍 **Unsupported Feature Detection**: Automatically detects and reports JavaScript features that don't exist in Scratch
-- 📦 **Scratch 3.0 Compatible**: Generates valid Scratch 3.0 project files (.sb3)
-- ⚡ **Real-time Translation**: Instant feedback on code translation
-- 🎯 **Direct Upload**: Generated .sb3 files can be uploaded directly to Scratch website
+- **Dual Interface**: Command-line tool and web-based drag-and-drop interface
+- **Glass UI Design**: Modern, elegant web interface with glass morphism
+- **Unsupported Feature Detection**: Automatically detects and reports JavaScript features that don't exist in Scratch
+- **Scratch 3.0 Compatible**: Generates valid Scratch 3.0 project files (.sb3)
+- **Real-time Translation**: Instant feedback on code translation
+- **Direct Upload**: Generated .sb3 files can be uploaded directly to Scratch website
 
 ## Installation
 
@@ -137,8 +137,8 @@ This code will be successfully translated to Scratch blocks.
 
 ```javascript
 let x = 10;
-window.alert("Hello!"); // ❌ Error: Unsupported feature
-console.log(x);         // ❌ Error: Unsupported feature
+window.alert("Hello!"); // ✗ Error: Unsupported feature
+console.log(x);         // ✗ Error: Unsupported feature
 ```
 
 This code will throw visible exceptions indicating which features are not supported.
