@@ -6,6 +6,8 @@ const crypto = require('crypto');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 const { createSB3File } = require('../translator/sb3Builder');
 const { extractZipToTemp, cleanupTemp, combineJavaScriptFiles } = require('../utils/zipHandler');
+const { extractJavaScriptFromHTML, isHTML } = require('../utils/htmlParser');
+const { transformCanvasToScratch } = require('../utils/canvasTransformer');
 
 const app = express();
 
@@ -16,16 +18,19 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit for zip files
   },
   fileFilter: (req, file, cb) => {
-    // Accept .js and .zip files
+    // Accept .js, .html, and .zip files
     if (file.mimetype === 'text/javascript' || 
         file.mimetype === 'application/javascript' ||
+        file.mimetype === 'text/html' ||
         file.mimetype === 'application/zip' ||
         file.mimetype === 'application/x-zip-compressed' ||
         file.originalname.endsWith('.js') ||
+        file.originalname.endsWith('.html') ||
+        file.originalname.endsWith('.htm') ||
         file.originalname.endsWith('.zip')) {
       cb(null, true);
     } else {
-      cb(new Error('Only JavaScript files (.js) or zip archives (.zip) are allowed'));
+      cb(new Error('Only JavaScript files (.js), HTML files (.html), or zip archives (.zip) are allowed'));
     }
   }
 });
@@ -54,6 +59,9 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
       const isZip = req.file.originalname.endsWith('.zip') || 
                     req.file.mimetype === 'application/zip' ||
                     req.file.mimetype === 'application/x-zip-compressed';
+      const isHtmlFile = req.file.originalname.endsWith('.html') || 
+                         req.file.originalname.endsWith('.htm') ||
+                         req.file.mimetype === 'text/html';
 
       if (isZip) {
         // Handle zip file
@@ -61,19 +69,34 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
           const { tempDir: extractedDir, files } = await extractZipToTemp(req.file.buffer);
           tempDir = extractedDir;
 
-          if (files.js.length === 0) {
+          if (files.js.length === 0 && files.html.length === 0) {
             return res.status(400).json({
               success: false,
-              error: 'No JavaScript files found in the zip archive',
+              error: 'No JavaScript or HTML files found in the zip archive',
             });
           }
 
-          // Combine all JavaScript files
-          code = await combineJavaScriptFiles(files.js);
+          // Combine all JavaScript files and extract from HTML
+          const jsCode = files.js.length > 0 ? await combineJavaScriptFiles(files.js) : '';
+          const htmlCode = files.html.length > 0 ? await combineJavaScriptFiles(files.html) : '';
+          const extractedHtmlJs = htmlCode ? extractJavaScriptFromHTML(htmlCode) : '';
+          
+          code = [jsCode, extractedHtmlJs].filter(c => c).join('\n\n');
         } catch (zipError) {
           return res.status(400).json({
             success: false,
             error: `Failed to process zip file: ${zipError.message}`,
+          });
+        }
+      } else if (isHtmlFile) {
+        // Handle single HTML file
+        const htmlContent = req.file.buffer.toString('utf-8');
+        code = extractJavaScriptFromHTML(htmlContent);
+        
+        if (!code || code.trim().length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'No JavaScript code found in HTML file',
           });
         }
       } else {
@@ -97,6 +120,9 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
         error: 'No code provided',
       });
     }
+
+    // Transform canvas operations if present
+    code = transformCanvasToScratch(code);
 
     // Translate to Scratch
     const result = translateToScratch(code);
@@ -171,7 +197,7 @@ app.use((error, req, res, next) => {
     });
   }
   
-  if (error.message === 'Only JavaScript files (.js) or zip archives (.zip) are allowed') {
+  if (error.message === 'Only JavaScript files (.js), HTML files (.html), or zip archives (.zip) are allowed') {
     return res.status(400).json({
       success: false,
       error: error.message,

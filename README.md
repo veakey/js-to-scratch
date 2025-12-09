@@ -23,7 +23,7 @@ npm install
 
 ### Command Line Interface (CLI)
 
-The CLI allows you to translate JavaScript files or zip archives containing JavaScript projects.
+The CLI allows you to translate JavaScript files, HTML files with canvas, or zip archives containing JavaScript projects.
 
 #### Translate a single JavaScript file:
 
@@ -33,6 +33,14 @@ npm run cli -- translate examples/simple.js
 
 This will generate a `.sb3` file in the same directory as the input file.
 
+#### Translate an HTML file with canvas:
+
+```bash
+npm run cli -- translate examples/canvas-hello.html -o output.sb3
+```
+
+The translator will extract JavaScript from `<script>` tags and automatically convert canvas drawing operations to Scratch blocks.
+
 #### Translate with a custom output file:
 
 ```bash
@@ -41,7 +49,7 @@ npm run cli -- translate examples/simple.js -o output.sb3
 
 #### Translate a zip archive:
 
-You can also provide a zip file containing JavaScript, CSS, and HTML files. Only the JavaScript files will be translated.
+You can also provide a zip file containing JavaScript, CSS, and HTML files. JavaScript will be extracted from both `.js` files and `<script>` tags in `.html` files.
 
 ```bash
 npm run cli -- translate project.zip -o output.sb3
@@ -50,7 +58,8 @@ npm run cli -- translate project.zip -o output.sb3
 **Requirements for zip files:**
 - The zip file must contain `.js`, `.css`, and/or `.html` files in the root directory
 - All JavaScript files will be combined and translated
-- CSS and HTML files will be ignored but are allowed in the archive
+- JavaScript will be extracted from HTML `<script>` tags
+- CSS files will be ignored but are allowed in the archive
 
 ### Web Interface (UI)
 
@@ -66,12 +75,15 @@ Then open your browser to `http://localhost:3000`
 
 #### Features:
 
-- **Drag and drop** JavaScript files (`.js`) or zip archives (`.zip`) for translation
+- **Drag and drop** JavaScript files (`.js`), HTML files (`.html`), or zip archives (`.zip`) for translation
 - **Click to browse** files from your computer
 - **Paste code directly** into the editor for quick translations
 - **Automatic download** of the resulting Scratch project as a `.sb3` file
 - **File size limit**: 10MB for uploads
-- **Supported formats**: `.js` files or `.zip` archives containing `.js`, `.css`, and `.html` files
+- **Supported formats**: 
+  - `.js` JavaScript files
+  - `.html` HTML files with canvas (JavaScript extracted from `<script>` tags)
+  - `.zip` archives containing `.js`, `.html`, `.css` files
 
 #### Usage instructions:
 
@@ -93,6 +105,33 @@ The translator supports a subset of JavaScript features that can be mapped to Sc
   - `while` loops
   - `for` loops
 
+### HTML Canvas Support
+
+The translator can extract JavaScript from HTML files and automatically transform canvas drawing operations:
+
+- **HTML Parsing**: Extracts JavaScript from `<script>` tags in HTML files
+- **Canvas API Transformation**: Converts canvas 2D context operations to Scratch equivalents:
+  - `ctx.fillText()` → Scratch "say" block
+  - `ctx.strokeText()` → Scratch "say" block
+  - `ctx.fillStyle` → `scratch_pen_color` variable
+  - `ctx.font` (size) → `scratch_text_size` variable
+  - Canvas context initialization (`document.getElementById`, `getContext`) is automatically handled
+
+**Example:**
+```javascript
+// This canvas code:
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+ctx.font = '30px Arial';
+ctx.fillStyle = 'black';
+ctx.fillText('Hello world', 200, 100);
+
+// Is transformed to:
+scratch_text_size = 30;
+scratch_pen_color = 'black';
+scratch_say('Hello world', 200, 100);
+```
+
 ## Unsupported Features
 
 The following JavaScript features are **not supported** in Scratch and will throw visible exceptions:
@@ -101,8 +140,6 @@ The following JavaScript features are **not supported** in Scratch and will thro
 - ❌ `window.alert`
 - ❌ `window.confirm`
 - ❌ `window.prompt`
-- ❌ `document.getElementById`
-- ❌ `document.querySelector`
 - ❌ `console.log`
 - ❌ `localStorage`
 - ❌ `sessionStorage`
@@ -112,6 +149,8 @@ The following JavaScript features are **not supported** in Scratch and will thro
 - ❌ `setInterval`
 - ❌ `Promise`
 - ❌ `async`/`await`
+
+**Note:** When translating HTML files, `document.getElementById()` and canvas `getContext()` are automatically handled and transformed, so they won't cause errors in that context.
 
 When these features are detected, the translator will throw a clear error message indicating:
 - The unsupported feature name
@@ -133,7 +172,27 @@ if (x < y) {
 
 This code will be successfully translated to Scratch blocks.
 
-### Example 2: Unsupported Features
+### Example 2: HTML Canvas (Supported)
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+  <canvas id="myCanvas" width="400" height="200"></canvas>
+  <script>
+    const canvas = document.getElementById('myCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '30px Arial';
+    ctx.fillStyle = 'black';
+    ctx.fillText('Hello world', 200, 100);
+  </script>
+</body>
+</html>
+```
+
+This HTML file with canvas will be successfully translated. The canvas operations are automatically converted to Scratch blocks.
+
+### Example 3: Unsupported Features
 
 ```javascript
 let x = 10;

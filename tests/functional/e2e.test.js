@@ -81,6 +81,41 @@ describe('End-to-End Tests', () => {
         expect(error.stderr || error.stdout).toContain('UNSUPPORTED FEATURE');
       }
     }, 10000);
+
+    test('should translate HTML file with canvas to Scratch', async () => {
+      const projectRoot = path.join(__dirname, '../..');
+      const inputFile = path.join(projectRoot, 'examples/canvas-hello.html');
+      const outputFile = path.join(outputDir, 'cli-canvas-html.sb3');
+
+      const { stdout } = await execAsync(
+        `node src/cli/index.js translate ${inputFile} -o ${outputFile}`,
+        { cwd: projectRoot }
+      );
+
+      expect(stdout).toContain('Reading HTML file');
+      expect(stdout).toContain('Extracting JavaScript');
+      expect(stdout).toContain('Successfully translated');
+      expect(fs.existsSync(outputFile)).toBe(true);
+
+      // Verify the .sb3 file structure
+      const zip = new AdmZip(outputFile);
+      const entries = zip.getEntries();
+      expect(entries.some(e => e.entryName === 'project.json')).toBe(true);
+
+      // Verify the project contains looks_say block for canvas fillText
+      const projectJson = zip.readAsText('project.json');
+      const project = JSON.parse(projectJson);
+      const sprite = project.targets[1];
+      const blocks = Object.values(sprite.blocks);
+      
+      // Should contain looks_say block (transformed from fillText)
+      expect(blocks.some(b => b.opcode === 'looks_say')).toBe(true);
+      
+      // Should contain data_setvariableto blocks for scratch_text_size and scratch_pen_color
+      const setVarBlocks = blocks.filter(b => b.opcode === 'data_setvariableto');
+      expect(setVarBlocks.some(b => b.fields.VARIABLE[0] === 'scratch_text_size')).toBe(true);
+      expect(setVarBlocks.some(b => b.fields.VARIABLE[0] === 'scratch_pen_color')).toBe(true);
+    }, 10000);
   });
 
   describe('Integration Tests', () => {

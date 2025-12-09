@@ -24,12 +24,12 @@
                         <polyline points="17 8 12 3 7 8"></polyline>
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                    <h2>Drop JavaScript or ZIP file here</h2>
+                    <h2>Drop JavaScript, HTML, or ZIP file here</h2>
                     <p>or</p>
                     <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
                         Choose File
                     </button>
-                    <input type="file" id="fileInput" accept=".js,.zip" style="display: none;">
+                    <input type="file" id="fileInput" accept=".js,.html,.htm,.zip" style="display: none;">
                 </div>
             </div>
 
@@ -64,7 +64,7 @@ if (x < y) {
         <!-- Footer -->
         <footer class="glass-card footer">
             <p>Built using Glass UI design</p>
-            <p class="note">Note: Some JavaScript features like window.location, window.alert, console.log are not supported in Scratch</p>
+            <p class="note">Note: Some JavaScript features like window.location, window.alert, console.log are not supported in Scratch. HTML files with canvas are supported - canvas operations will be automatically transformed.</p>
         </footer>
     </div>
 
