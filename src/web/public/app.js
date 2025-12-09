@@ -11,6 +11,44 @@ const errorSection = document.getElementById('errorSection');
 const resultContent = document.getElementById('resultContent');
 const errorContent = document.getElementById('errorContent');
 const downloadBtn = document.getElementById('downloadBtn');
+const toastContainer = document.getElementById('toastContainer');
+
+// Toast notification function
+function showToast(message, type = 'error', details = null, duration = 5000) {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const title = type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info';
+    
+    let toastHTML = `
+        <div class="toast-header">
+            <span>${title}</span>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+        <div class="toast-message">${message}</div>
+    `;
+    
+    if (details) {
+        toastHTML += `<div class="toast-detail">${details}</div>`;
+    }
+    
+    toast.innerHTML = toastHTML;
+    toastContainer.appendChild(toast);
+    
+    // Auto-remove after duration
+    if (duration > 0) {
+        setTimeout(() => {
+            toast.classList.add('removing');
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 300); // Match animation duration
+        }, duration);
+    }
+    
+    return toast;
+}
 
 // Drag and drop handlers
 dropZone.addEventListener('dragover', (e) => {
@@ -179,6 +217,9 @@ function showSuccess() {
             You can now upload it to <a href="https://scratch.mit.edu/" target="_blank">scratch.mit.edu</a>
         </div>
     `;
+    
+    // Show success toast
+    showToast('Translation completed successfully!', 'success', 'Your .sb3 file has been downloaded.', 3000);
 }
 
 // Show error
@@ -189,9 +230,14 @@ function showError(error) {
     translateBtn.textContent = 'Translate to Scratch';
 
     let errorHTML = '';
+    let toastMessage = '';
+    let toastDetails = null;
 
     if (error.feature) {
         // Unsupported feature error
+        toastMessage = `Unsupported feature: ${error.feature}`;
+        toastDetails = `Found at line ${error.line}, column ${error.column}. This feature does not exist in Scratch.`;
+        
         errorHTML = `
             <div class="error-detail">
                 <strong>Unsupported Feature Detected</strong>
@@ -212,6 +258,8 @@ function showError(error) {
         `;
     } else {
         // General error
+        toastMessage = error.error || error.message;
+        
         errorHTML = `
             <div class="error-detail">
                 <strong>Error:</strong> ${error.error || error.message}
@@ -220,6 +268,9 @@ function showError(error) {
     }
 
     errorContent.innerHTML = errorHTML;
+    
+    // Show toast notification
+    showToast(toastMessage, 'error', toastDetails);
 }
 
 // Initialize
