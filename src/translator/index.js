@@ -153,6 +153,28 @@ function astToScratchBlocks(ast) {
             prevBlockId = stmtBlockId;
           }
         });
+        
+        // Add control_stop block at the end
+        if (prevBlockId) {
+          const stopBlockId = generateBlockId();
+          blocks[stopBlockId] = {
+            opcode: 'control_stop',
+            next: null,
+            parent: prevBlockId,
+            inputs: {},
+            fields: {
+              STOP_OPTION: ['all', null],
+            },
+            shadow: false,
+            topLevel: false,
+            mutation: {
+              tagName: 'mutation',
+              children: [],
+              hasnext: 'false',
+            },
+          };
+          blocks[prevBlockId].next = stopBlockId;
+        }
         return null;
 
       case 'VariableDeclaration':
@@ -177,6 +199,26 @@ function astToScratchBlocks(ast) {
 
       case 'ExpressionStatement':
         return convertNode(node.expression, parentId);
+
+      case 'AssignmentExpression':
+        // Handle assignments like x = x + 1
+        if (node.operator === '=' && node.left.type === 'Identifier') {
+          blocks[blockId] = {
+            opcode: 'data_setvariableto',
+            next: null,
+            parent: parentId,
+            inputs: {
+              VALUE: convertExpressionToInput(node.right),
+            },
+            fields: {
+              VARIABLE: [node.left.name, node.left.name],
+            },
+            shadow: false,
+            topLevel: parentId === null,
+          };
+          return blockId;
+        }
+        return null;
 
       case 'CallExpression':
         // Function calls - basic support
@@ -291,13 +333,52 @@ function astToScratchBlocks(ast) {
       case 'BinaryExpression':
         const opcode = getBinaryOperatorOpcode(expr.operator);
         const opBlockId = generateBlockId();
+        const isComparison = ['<', '>', '<=', '>=', '==', '===', '!=', '!=='].includes(expr.operator);
+        const isGreater = ['>', '>='].includes(expr.operator);
+        
+        // Format inputs based on operator type
+        let leftFinal, rightFinal;
+        if (isComparison) {
+          // Comparison operators use OPERAND1/OPERAND2
+          // For > and >=, use format [3, [12, name, name], [10, ""]] for left operand
+          // For < and <=, use format [2, [12, name, name]] for operands
+          if (expr.left.type === 'Identifier') {
+            leftFinal = isGreater 
+              ? [3, [12, expr.left.name, expr.left.name], [10, '']]
+              : [2, [12, expr.left.name, expr.left.name]];
+          } else if (expr.left.type === 'Literal') {
+            leftFinal = [1, [10, String(expr.left.value)]];
+          } else {
+            leftFinal = convertExpressionToInput(expr.left);
+          }
+          
+          if (expr.right.type === 'Identifier') {
+            rightFinal = [2, [12, expr.right.name, expr.right.name]];
+          } else if (expr.right.type === 'Literal') {
+            rightFinal = [1, [10, String(expr.right.value)]];
+          } else {
+            rightFinal = convertExpressionToInput(expr.right);
+          }
+        } else {
+          // Arithmetic operators use NUM1/NUM2 with format [3, [12, name, name], [4, ""]] for variables
+          leftFinal = (expr.left.type === 'Identifier') 
+            ? [3, [12, expr.left.name, expr.left.name], [4, '']] 
+            : convertExpressionToInput(expr.left);
+          rightFinal = (expr.right.type === 'Identifier') 
+            ? [3, [12, expr.right.name, expr.right.name], [4, '']] 
+            : convertExpressionToInput(expr.right);
+        }
+        
         blocks[opBlockId] = {
           opcode: opcode,
           next: null,
           parent: null,
-          inputs: {
-            NUM1: convertExpressionToInput(expr.left),
-            NUM2: convertExpressionToInput(expr.right),
+          inputs: isComparison ? {
+            OPERAND1: leftFinal,
+            OPERAND2: rightFinal,
+          } : {
+            NUM1: leftFinal,
+            NUM2: rightFinal,
           },
           fields: {},
           shadow: false,
@@ -399,10 +480,10 @@ function translateToScratch(code) {
           currentCostume: 0,
           costumes: [
             {
-              assetId: 'cd21514d0531fdffb22204e0ec5ed84a',
               name: 'backdrop1',
-              md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg',
               dataFormat: 'svg',
+              assetId: 'bcce94f75335c9bd3879cdf6fd0e7fef',
+              md5ext: 'bcce94f75335c9bd3879cdf6fd0e7fef.svg',
               rotationCenterX: 240,
               rotationCenterY: 180,
             },
@@ -421,11 +502,11 @@ function translateToScratch(code) {
           currentCostume: 0,
           costumes: [
             {
-              assetId: 'b7853f557e4426412e64bb3da6531a99',
               name: 'costume1',
               bitmapResolution: 1,
-              md5ext: 'b7853f557e4426412e64bb3da6531a99.svg',
               dataFormat: 'svg',
+              assetId: '3b19a04a24b878911444f9a154bc2695',
+              md5ext: '3b19a04a24b878911444f9a154bc2695.svg',
               rotationCenterX: 48,
               rotationCenterY: 50,
             },
