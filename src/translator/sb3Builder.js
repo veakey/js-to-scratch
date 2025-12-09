@@ -30,8 +30,8 @@ async function createSB3File(scratchProject, outputPath) {
     // Copy asset files
     const assetsDir = path.join(__dirname, '../assets');
     const assetFiles = [
-      'cd21514d0531fdffb22204e0ec5ed84a.svg', // backdrop
-      'b7853f557e4426412e64bb3da6531a99.svg', // sprite costume
+      'bcce94f75335c9bd3879cdf6fd0e7fef.svg', // backdrop
+      '3b19a04a24b878911444f9a154bc2695.svg', // sprite costume
     ];
 
     for (const assetFile of assetFiles) {
