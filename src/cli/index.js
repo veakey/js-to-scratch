@@ -4,6 +4,7 @@ const { Command } = require('commander');
 const fs = require('fs');
 const path = require('path');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
+const { createSB3File } = require('../translator/sb3Builder');
 
 const program = new Command();
 
@@ -17,7 +18,7 @@ program
   .description('Translate a JavaScript file to Scratch 3.0 format')
   .argument('<input>', 'Input JavaScript file')
   .option('-o, --output <file>', 'Output file (defaults to input name with .sb3 extension)')
-  .action((input, options) => {
+  .action(async (input, options) => {
     try {
       // Read input file
       const inputPath = path.resolve(input);
@@ -38,14 +39,15 @@ program
       // Determine output path
       const outputPath = options.output 
         ? path.resolve(options.output)
-        : inputPath.replace(/\.[^.]+$/, '.sb3.json');
+        : inputPath.replace(/\.[^.]+$/, '.sb3');
 
-      // Write output
-      fs.writeFileSync(outputPath, JSON.stringify(result.project, null, 2));
+      // Create .sb3 file
+      console.log(`📦 Creating Scratch 3.0 project file...`);
+      const finalPath = await createSB3File(result.project, outputPath);
       
       console.log(`✅ Successfully translated to Scratch 3.0`);
-      console.log(`📝 Output saved to: ${outputPath}`);
-      console.log(`\n💡 Note: Open this file in Scratch 3.0 to import the project`);
+      console.log(`📝 Output saved to: ${finalPath}`);
+      console.log(`\n💡 You can now upload this .sb3 file to https://scratch.mit.edu/`);
 
     } catch (error) {
       if (error instanceof UnsupportedFeatureError) {

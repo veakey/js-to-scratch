@@ -9,8 +9,9 @@ This project aims to translate JavaScript projects into Scratch projects with su
 - ✨ **Dual Interface**: Command-line tool and web-based drag-and-drop interface
 - 🎨 **Glass UI Design**: Modern, elegant web interface with glass morphism
 - 🔍 **Unsupported Feature Detection**: Automatically detects and reports JavaScript features that don't exist in Scratch
-- 📦 **Scratch 3.0 Compatible**: Generates valid Scratch 3.0 project files
+- 📦 **Scratch 3.0 Compatible**: Generates valid Scratch 3.0 project files (.sb3)
 - ⚡ **Real-time Translation**: Instant feedback on code translation
+- 🎯 **Direct Upload**: Generated .sb3 files can be uploaded directly to Scratch website
 
 ## Installation
 
@@ -28,10 +29,12 @@ Translate a JavaScript file to Scratch 3.0:
 npm run cli translate examples/simple.js
 ```
 
+This will generate a `.sb3` file that you can upload directly to https://scratch.mit.edu/
+
 Or with a custom output file:
 
 ```bash
-npm run cli translate examples/simple.js -o output.sb3.json
+npm run cli translate examples/simple.js -o output.sb3
 ```
 
 ### Web Interface
@@ -47,7 +50,8 @@ Then open your browser to `http://localhost:3000`
 The web interface allows you to:
 - Drag and drop JavaScript files for translation
 - Paste code directly into the editor
-- Download the resulting Scratch project
+- Download the resulting Scratch project as a `.sb3` file
+- Upload the `.sb3` file directly to https://scratch.mit.edu/
 
 ## Supported JavaScript Features
 

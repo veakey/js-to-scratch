@@ -1,7 +1,9 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
+const { createSB3File } = require('../translator/sb3Builder');
 
 const app = express();
 
@@ -28,7 +30,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '1mb' })); // Limit JSON body size
 
 // API endpoint for translation
-app.post('/api/translate', upload.single('file'), (req, res) => {
+app.post('/api/translate', upload.single('file'), async (req, res) => {
   try {
     let code;
 
@@ -63,10 +65,32 @@ app.post('/api/translate', upload.single('file'), (req, res) => {
     // Translate to Scratch
     const result = translateToScratch(code);
 
-    res.json({
-      success: true,
-      project: result.project,
-    });
+    // Create temporary .sb3 file
+    const tempFilePath = path.join(__dirname, `../../temp-${Date.now()}.sb3`);
+    
+    try {
+      await createSB3File(result.project, tempFilePath);
+      
+      // Send the .sb3 file as download
+      res.download(tempFilePath, 'project.sb3', (err) => {
+        // Clean up temp file after sending
+        fs.unlink(tempFilePath, (unlinkErr) => {
+          if (unlinkErr) {
+            console.error('Error deleting temp file:', unlinkErr);
+          }
+        });
+        
+        if (err) {
+          console.error('Error sending file:', err);
+        }
+      });
+    } catch (buildError) {
+      // Clean up temp file if it exists
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+      throw buildError;
+    }
 
   } catch (error) {
     if (error instanceof UnsupportedFeatureError) {

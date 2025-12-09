@@ -3,6 +3,9 @@ npm-debug.log
 yarn-error.log
 .DS_Store
 *.sb3.json
+*.sb3
+.scratch-temp-*
+temp-*.sb3
 dist/
 build/
 .env

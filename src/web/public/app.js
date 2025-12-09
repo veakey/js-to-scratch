@@ -79,11 +79,16 @@ async function handleFileUpload(file) {
             body: formData,
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            showResult(result.project);
+        // Check if response is a file download
+        if (response.headers.get('content-type') === 'application/octet-stream' ||
+            response.headers.get('content-disposition')?.includes('attachment')) {
+            // Download the .sb3 file
+            const blob = await response.blob();
+            downloadFile(blob, 'project.sb3');
+            showSuccess();
         } else {
+            // Error response
+            const result = await response.json();
             showError(result);
         }
     } catch (error) {
@@ -114,11 +119,16 @@ translateBtn.addEventListener('click', async () => {
             body: JSON.stringify({ code }),
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            showResult(result.project);
+        // Check if response is a file download
+        if (response.headers.get('content-type') === 'application/octet-stream' ||
+            response.headers.get('content-disposition')?.includes('attachment')) {
+            // Download the .sb3 file
+            const blob = await response.blob();
+            downloadFile(blob, 'project.sb3');
+            showSuccess();
         } else {
+            // Error response
+            const result = await response.json();
             showError(result);
         }
     } catch (error) {
@@ -128,22 +138,17 @@ translateBtn.addEventListener('click', async () => {
     }
 });
 
-// Download button handler
-downloadBtn.addEventListener('click', () => {
-    if (!currentResult) return;
-
-    const blob = new Blob([JSON.stringify(currentResult, null, 2)], {
-        type: 'application/json',
-    });
+// Helper function to download file
+function downloadFile(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'project.sb3.json';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-});
+}
 
 // Show loading state
 function showLoading() {
@@ -153,30 +158,25 @@ function showLoading() {
     translateBtn.textContent = '⏳ Translating...';
 }
 
-// Show result
-function showResult(project) {
-    currentResult = project;
-    
+// Show success message
+function showSuccess() {
     resultSection.style.display = 'block';
     errorSection.style.display = 'none';
     translateBtn.disabled = false;
     translateBtn.textContent = '🔄 Translate to Scratch';
-
-    // Count blocks
-    const blockCount = Object.keys(project.targets[1].blocks || {}).length;
 
     resultContent.innerHTML = `
         <div class="result-info">
             <strong>✓</strong> Translation completed successfully!
         </div>
         <div class="result-info">
-            <strong>Blocks created:</strong> ${blockCount}
+            <strong>Format:</strong> Scratch 3.0 (.sb3)
         </div>
         <div class="result-info">
-            <strong>Format:</strong> Scratch 3.0
+            💡 Your .sb3 file has been downloaded automatically!
         </div>
         <div class="result-info">
-            💡 Click the download button below to save the Scratch project file.
+            🚀 You can now upload it to <a href="https://scratch.mit.edu/" target="_blank">scratch.mit.edu</a>
         </div>
     `;
 }
