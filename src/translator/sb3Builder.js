@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const archiver = require('archiver');
 const { promisify } = require('util');
 
@@ -15,7 +16,8 @@ const rmdirAsync = promisify(fs.rm);
  * @returns {Promise<string>} - Path to the created .sb3 file
  */
 async function createSB3File(scratchProject, outputPath) {
-  const tempDir = path.join(path.dirname(outputPath), `.scratch-temp-${Date.now()}`);
+  const uniqueId = crypto.randomUUID();
+  const tempDir = path.join(path.dirname(outputPath), `.scratch-temp-${uniqueId}`);
   
   try {
     // Create temporary directory
@@ -44,7 +46,12 @@ async function createSB3File(scratchProject, outputPath) {
     // Ensure output path has .sb3 extension
     let finalOutputPath = outputPath;
     if (!finalOutputPath.endsWith('.sb3')) {
-      finalOutputPath = finalOutputPath.replace(/\.[^.]*$/, '.sb3');
+      // If there's an extension, replace it; otherwise, append .sb3
+      if (finalOutputPath.match(/\.[^.]+$/)) {
+        finalOutputPath = finalOutputPath.replace(/\.[^.]*$/, '.sb3');
+      } else {
+        finalOutputPath = finalOutputPath + '.sb3';
+      }
     }
 
     // Create ZIP archive and rename to .sb3

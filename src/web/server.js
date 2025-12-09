@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 const { createSB3File } = require('../translator/sb3Builder');
 
@@ -65,15 +66,16 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
     // Translate to Scratch
     const result = translateToScratch(code);
 
-    // Create temporary .sb3 file
-    const tempFilePath = path.join(__dirname, `../../temp-${Date.now()}.sb3`);
+    // Create temporary .sb3 file with unique identifier
+    const uniqueId = crypto.randomUUID();
+    const tempFilePath = path.join(__dirname, `../../temp-${uniqueId}.sb3`);
     
     try {
       await createSB3File(result.project, tempFilePath);
       
       // Send the .sb3 file as download
       res.download(tempFilePath, 'project.sb3', (err) => {
-        // Clean up temp file after sending
+        // Clean up temp file after sending (async)
         fs.unlink(tempFilePath, (unlinkErr) => {
           if (unlinkErr) {
             console.error('Error deleting temp file:', unlinkErr);
@@ -85,10 +87,13 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
         }
       });
     } catch (buildError) {
-      // Clean up temp file if it exists
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
+      // Clean up temp file if it exists (async)
+      fs.unlink(tempFilePath, (unlinkErr) => {
+        // Ignore errors if file doesn't exist
+        if (unlinkErr && unlinkErr.code !== 'ENOENT') {
+          console.error('Error deleting temp file:', unlinkErr);
+        }
+      });
       throw buildError;
     }
 
