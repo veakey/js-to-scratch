@@ -62,16 +62,22 @@ describe('End-to-End Tests', () => {
     }, 10000);
 
     test('should detect unsupported features via CLI', async () => {
-      const inputFile = path.join(fixturesDir, '../..', 'examples/unsupported.js');
+      const projectRoot = path.join(__dirname, '../..');
+      const inputFile = path.join(projectRoot, 'examples/unsupported.js');
       const outputFile = path.join(outputDir, 'cli-unsupported.sb3');
 
       try {
         await execAsync(
           `node src/cli/index.js translate ${inputFile} -o ${outputFile}`,
-          { cwd: path.join(__dirname, '../..') }
+          { cwd: projectRoot }
         );
-        fail('Should have thrown an error');
+        throw new Error('Should have thrown an error for unsupported features');
       } catch (error) {
+        // If the error message indicates it should have thrown, re-throw it
+        if (error.message === 'Should have thrown an error for unsupported features') {
+          throw error;
+        }
+        // Otherwise, verify the actual error contains the expected message
         expect(error.stderr || error.stdout).toContain('UNSUPPORTED FEATURE');
       }
     }, 10000);

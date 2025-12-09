@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { extractZipToTemp, cleanupTemp, combineJavaScriptFiles } = require('../../src/utils/zipHandler');
 
 describe('ZipHandler', () => {
@@ -60,7 +61,7 @@ describe('ZipHandler', () => {
     });
 
     test('should throw error if no files provided', async () => {
-      await expect(combineJavaScriptFiles([])).rejects.toThrow('No JavaScript files found');
+      await expect(combineJavaScriptFiles([])).rejects.toThrow('No JavaScript files found in zip archive');
     });
 
     test('should handle single file', async () => {
@@ -73,7 +74,7 @@ describe('ZipHandler', () => {
 
   describe('cleanupTemp', () => {
     test('should remove temporary directory', async () => {
-      const tempDir = path.join('/tmp', 'test-cleanup');
+      const tempDir = path.join(os.tmpdir(), 'test-cleanup');
       await fs.promises.mkdir(tempDir, { recursive: true });
       
       expect(fs.existsSync(tempDir)).toBe(true);
@@ -84,7 +85,8 @@ describe('ZipHandler', () => {
     });
 
     test('should not throw error for non-existent directory', async () => {
-      await expect(cleanupTemp('/tmp/non-existent-dir')).resolves.not.toThrow();
+      const nonExistentDir = path.join(os.tmpdir(), 'non-existent-dir');
+      await expect(cleanupTemp(nonExistentDir)).resolves.not.toThrow();
     });
   });
 });
