@@ -31,6 +31,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '1mb' })); // Limit JSON body size
 
 // API endpoint for translation
+// NOTE: For production use, consider adding rate limiting middleware (e.g., express-rate-limit)
+// to prevent abuse of file system operations
 app.post('/api/translate', upload.single('file'), async (req, res) => {
   try {
     let code;
