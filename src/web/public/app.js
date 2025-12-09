@@ -44,9 +44,27 @@ fileInput.addEventListener('change', (e) => {
 
 // File upload handler
 async function handleFileUpload(file) {
+    // Validate file extension
     if (!file.name.endsWith('.js')) {
         showError({
             message: 'Invalid file type. Please upload a .js file.',
+        });
+        return;
+    }
+    
+    // Validate file size (1MB limit)
+    const maxSize = 1 * 1024 * 1024; // 1MB
+    if (file.size > maxSize) {
+        showError({
+            message: 'File size exceeds 1MB limit. Please use a smaller file.',
+        });
+        return;
+    }
+    
+    // Validate file is not empty
+    if (file.size === 0) {
+        showError({
+            message: 'File is empty. Please upload a valid JavaScript file.',
         });
         return;
     }
