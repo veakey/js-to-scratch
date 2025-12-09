@@ -13,6 +13,9 @@ const errorContent = document.getElementById('errorContent');
 const downloadBtn = document.getElementById('downloadBtn');
 const toastContainer = document.getElementById('toastContainer');
 
+// Constants
+const TOAST_ANIMATION_DURATION = 300; // milliseconds
+
 // Toast notification function
 function showToast(message, type = 'error', details = null, duration = 5000) {
     const toast = document.createElement('div');
@@ -20,19 +23,37 @@ function showToast(message, type = 'error', details = null, duration = 5000) {
     
     const title = type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info';
     
-    let toastHTML = `
-        <div class="toast-header">
-            <span>${title}</span>
-            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
-        </div>
-        <div class="toast-message">${message}</div>
-    `;
+    // Create toast structure using DOM methods to avoid XSS
+    const toastHeader = document.createElement('div');
+    toastHeader.className = 'toast-header';
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = title;
+    
+    const closeButton = document.createElement('button');
+    closeButton.className = 'toast-close';
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => {
+        toast.remove();
+    });
+    
+    toastHeader.appendChild(titleSpan);
+    toastHeader.appendChild(closeButton);
+    
+    const toastMessage = document.createElement('div');
+    toastMessage.className = 'toast-message';
+    toastMessage.textContent = message;
+    
+    toast.appendChild(toastHeader);
+    toast.appendChild(toastMessage);
     
     if (details) {
-        toastHTML += `<div class="toast-detail">${details}</div>`;
+        const toastDetail = document.createElement('div');
+        toastDetail.className = 'toast-detail';
+        toastDetail.textContent = details;
+        toast.appendChild(toastDetail);
     }
     
-    toast.innerHTML = toastHTML;
     toastContainer.appendChild(toast);
     
     // Auto-remove after duration
@@ -43,7 +64,7 @@ function showToast(message, type = 'error', details = null, duration = 5000) {
                 if (toast.parentElement) {
                     toast.remove();
                 }
-            }, 300); // Match animation duration
+            }, TOAST_ANIMATION_DURATION);
         }, duration);
     }
     
