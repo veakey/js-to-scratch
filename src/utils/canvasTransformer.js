@@ -215,7 +215,8 @@ function transformCanvasToScratch(code) {
     // Generate transformed code
     const transformed = generateCode(transformedStatements);
     
-    // If no transformations were made, return original code
+    // If all canvas statements were removed (only initialization code), return empty string
+    // This is expected when HTML only contains canvas setup with no actual drawing operations
     if (transformedStatements.length === 0) {
       return '';
     }
@@ -242,7 +243,7 @@ function hasCanvasCode(code) {
          code.includes('.font');
 }
 
-module.exports.hasCanvasCode = hasCanvasCode;
+
 
 /**
  * Generate JavaScript code from AST nodes
@@ -308,4 +309,5 @@ function generateExpression(node) {
 
 module.exports = {
   transformCanvasToScratch,
+  hasCanvasCode,
 };
