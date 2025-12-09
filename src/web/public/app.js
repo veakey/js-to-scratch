@@ -14,14 +14,37 @@ const downloadBtn = document.getElementById('downloadBtn');
 const toastContainer = document.getElementById('toastContainer');
 
 // Constants
+// Note: Must match animation duration in styles.css (.toast.removing animation)
 const TOAST_ANIMATION_DURATION = 300; // milliseconds
+
+// Helper function to get toast title by type
+function getToastTitle(type) {
+    const titles = {
+        'error': 'Error',
+        'success': 'Success',
+        'info': 'Info'
+    };
+    return titles[type] || 'Info';
+}
+
+// Helper function to remove toast with animation
+function removeToast(toast) {
+    if (!toast || !toast.parentElement) return;
+    
+    toast.classList.add('removing');
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, TOAST_ANIMATION_DURATION);
+}
 
 // Toast notification function
 function showToast(message, type = 'error', details = null, duration = 5000) {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     
-    const title = type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info';
+    const title = getToastTitle(type);
     
     // Create toast structure using DOM methods to avoid XSS
     const toastHeader = document.createElement('div');
@@ -34,7 +57,7 @@ function showToast(message, type = 'error', details = null, duration = 5000) {
     closeButton.className = 'toast-close';
     closeButton.textContent = '×';
     closeButton.addEventListener('click', () => {
-        toast.remove();
+        removeToast(toast);
     });
     
     toastHeader.appendChild(titleSpan);
@@ -59,12 +82,7 @@ function showToast(message, type = 'error', details = null, duration = 5000) {
     // Auto-remove after duration
     if (duration > 0) {
         setTimeout(() => {
-            toast.classList.add('removing');
-            setTimeout(() => {
-                if (toast.parentElement) {
-                    toast.remove();
-                }
-            }, TOAST_ANIMATION_DURATION);
+            removeToast(toast);
         }, duration);
     }
     
