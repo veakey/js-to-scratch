@@ -11,3 +11,4 @@ build/
 .env
 .vscode/
 *.log
+tests/output/
