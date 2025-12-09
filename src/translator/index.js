@@ -598,6 +598,10 @@ function translateToScratch(code) {
     // Convert to Scratch blocks
     const blocks = astToScratchBlocks(ast);
 
+    // Check if code contains canvas text operations (scratch_say)
+    // If so, make sprite invisible since canvas doesn't show sprites
+    const hasCanvasText = code.includes('scratch_say');
+
     // Create Scratch 3.0 project structure
     const scratchProject = {
       targets: [
@@ -645,7 +649,7 @@ function translateToScratch(code) {
           ],
           sounds: [],
           volume: 100,
-          visible: true,
+          visible: !hasCanvasText,
           x: 0,
           y: 0,
           size: 100,
