@@ -145,10 +145,12 @@ function astToScratchBlocks(ast) {
                 topLevel: true,
               };
               blocks[stmtBlockId].parent = eventBlockId;
+              blocks[stmtBlockId].topLevel = false;
             }
             if (prevBlockId) {
               blocks[prevBlockId].next = stmtBlockId;
               blocks[stmtBlockId].parent = prevBlockId;
+              blocks[stmtBlockId].topLevel = false;
             }
             prevBlockId = stmtBlockId;
           }
@@ -186,13 +188,13 @@ function astToScratchBlocks(ast) {
             next: null,
             parent: parentId,
             inputs: {
-              VALUE: decl.init ? convertExpressionToInput(decl.init) : [1, [10, '0']],
+              VALUE: decl.init ? convertExpressionToInput(decl.init, blockId) : [1, [10, '0']],
             },
             fields: {
               VARIABLE: [decl.id.name, decl.id.name],
             },
             shadow: false,
-            topLevel: parentId === null,
+            topLevel: false,
           };
         }
         return blockId;
@@ -208,13 +210,13 @@ function astToScratchBlocks(ast) {
             next: null,
             parent: parentId,
             inputs: {
-              VALUE: convertExpressionToInput(node.right),
+              VALUE: convertExpressionToInput(node.right, blockId),
             },
             fields: {
               VARIABLE: [node.left.name, node.left.name],
             },
             shadow: false,
-            topLevel: parentId === null,
+            topLevel: false,
           };
           return blockId;
         }
@@ -229,7 +231,7 @@ function astToScratchBlocks(ast) {
           inputs: {},
           fields: {},
           shadow: false,
-          topLevel: parentId === null,
+          topLevel: false,
           mutation: {
             tagName: 'mutation',
             proccode: 'function',
@@ -245,12 +247,12 @@ function astToScratchBlocks(ast) {
           next: null,
           parent: parentId,
           inputs: {
-            CONDITION: convertExpressionToInput(node.test),
+            CONDITION: convertExpressionToInput(node.test, blockId),
             SUBSTACK: node.consequent ? [2, convertNode(node.consequent, blockId)] : null,
           },
           fields: {},
           shadow: false,
-          topLevel: parentId === null,
+          topLevel: false,
         };
         return blockId;
 
@@ -260,12 +262,12 @@ function astToScratchBlocks(ast) {
           next: null,
           parent: parentId,
           inputs: {
-            CONDITION: convertExpressionToInput(negateExpression(node.test)),
+            CONDITION: convertExpressionToInput(negateExpression(node.test), blockId),
             SUBSTACK: node.body ? [2, convertNode(node.body, blockId)] : null,
           },
           fields: {},
           shadow: false,
-          topLevel: parentId === null,
+          topLevel: false,
         };
         return blockId;
 
@@ -281,7 +283,7 @@ function astToScratchBlocks(ast) {
           },
           fields: {},
           shadow: false,
-          topLevel: parentId === null,
+          topLevel: false,
         };
         return blockId;
 
@@ -311,13 +313,13 @@ function astToScratchBlocks(ast) {
           },
           fields: {},
           shadow: false,
-          topLevel: parentId === null,
+          topLevel: false,
         };
         return blockId;
     }
   }
 
-  function convertExpressionToInput(expr) {
+  function convertExpressionToInput(expr, parentBlockId = null) {
     if (!expr) return [1, [10, '0']];
 
     switch (expr.type) {
@@ -355,7 +357,7 @@ function astToScratchBlocks(ast) {
           } else if (expr.left.type === 'Literal') {
             leftFinal = [1, [10, String(expr.left.value)]];
           } else {
-            leftFinal = convertExpressionToInput(expr.left);
+            leftFinal = convertExpressionToInput(expr.left, opBlockId);
           }
           
           if (expr.right.type === 'Identifier') {
@@ -363,23 +365,23 @@ function astToScratchBlocks(ast) {
           } else if (expr.right.type === 'Literal') {
             rightFinal = [1, [10, String(expr.right.value)]];
           } else {
-            rightFinal = convertExpressionToInput(expr.right);
+            rightFinal = convertExpressionToInput(expr.right, opBlockId);
           }
         } else {
           // Arithmetic operators use NUM1/NUM2 with format [3, [12, name, name], [4, ""]]
           // This provides a shadow value ([4, ""]) as a fallback for numeric input.
           leftFinal = (expr.left.type === 'Identifier') 
             ? [3, [12, expr.left.name, expr.left.name], [4, '']] 
-            : convertExpressionToInput(expr.left);
+            : convertExpressionToInput(expr.left, opBlockId);
           rightFinal = (expr.right.type === 'Identifier') 
             ? [3, [12, expr.right.name, expr.right.name], [4, '']] 
-            : convertExpressionToInput(expr.right);
+            : convertExpressionToInput(expr.right, opBlockId);
         }
         
         blocks[opBlockId] = {
           opcode: opcode,
           next: null,
-          parent: null,
+          parent: parentBlockId,
           inputs: isComparison ? {
             OPERAND1: leftFinal,
             OPERAND2: rightFinal,
