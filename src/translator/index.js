@@ -311,9 +311,37 @@ function astToScratchBlocks(ast) {
   }
 
   function negateExpression(expr) {
-    // For simplicity, return the same expression
-    // In a full implementation, would negate the condition
-    return expr;
+    // Negate the expression for repeat_until block
+    if (!expr) return expr;
+    
+    // For binary expressions with comparison operators, negate them
+    if (expr.type === 'BinaryExpression') {
+      const negatedOp = {
+        '<': '>=',
+        '>': '<=',
+        '<=': '>',
+        '>=': '<',
+        '==': '!=',
+        '===': '!==',
+        '!=': '==',
+        '!==': '==='
+      };
+      
+      if (negatedOp[expr.operator]) {
+        return {
+          ...expr,
+          operator: negatedOp[expr.operator]
+        };
+      }
+    }
+    
+    // For other cases, wrap in a not operator
+    return {
+      type: 'UnaryExpression',
+      operator: '!',
+      prefix: true,
+      argument: expr
+    };
   }
 
   function getBinaryOperatorOpcode(operator) {
@@ -324,8 +352,12 @@ function astToScratchBlocks(ast) {
       case '/': return 'operator_divide';
       case '<': return 'operator_lt';
       case '>': return 'operator_gt';
+      case '<=': return 'operator_lt'; // Scratch doesn't have <=, use < as approximation
+      case '>=': return 'operator_gt'; // Scratch doesn't have >=, use > as approximation
       case '==': case '===': return 'operator_equals';
-      default: return 'operator_add';
+      case '!=': case '!==': return 'operator_equals'; // Will need NOT wrapper
+      default: 
+        throw new Error(`Unsupported binary operator: ${operator}`);
     }
   }
 

@@ -4,11 +4,28 @@ const path = require('path');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+
+// Configure multer with file size limit (1MB) and file filter
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 1 * 1024 * 1024, // 1MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Only accept .js files
+    if (file.mimetype === 'text/javascript' || 
+        file.mimetype === 'application/javascript' ||
+        file.originalname.endsWith('.js')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JavaScript files (.js) are allowed'));
+    }
+  }
+});
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // Limit JSON body size
 
 // API endpoint for translation
 app.post('/api/translate', upload.single('file'), (req, res) => {
@@ -16,8 +33,23 @@ app.post('/api/translate', upload.single('file'), (req, res) => {
     let code;
 
     if (req.file) {
-      // File upload
+      // File upload - validate content
+      if (req.file.size === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Empty file provided',
+        });
+      }
+      
       code = req.file.buffer.toString('utf-8');
+      
+      // Basic content validation - check if it's valid UTF-8 text
+      if (!code || code.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'File does not contain valid text content',
+        });
+      }
     } else if (req.body.code) {
       // Direct code submission
       code = req.body.code;
@@ -53,6 +85,31 @@ app.post('/api/translate', upload.single('file'), (req, res) => {
       error: error.message,
     });
   }
+});
+
+// Error handling middleware for multer errors
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'File size exceeds 1MB limit',
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      error: `File upload error: ${error.message}`,
+    });
+  }
+  
+  if (error.message === 'Only JavaScript files (.js) are allowed') {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+  
+  next(error);
 });
 
 // Health check endpoint
