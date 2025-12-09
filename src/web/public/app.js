@@ -45,18 +45,18 @@ fileInput.addEventListener('change', (e) => {
 // File upload handler
 async function handleFileUpload(file) {
     // Validate file extension
-    if (!file.name.endsWith('.js')) {
+    if (!file.name.endsWith('.js') && !file.name.endsWith('.zip')) {
         showError({
-            message: 'Invalid file type. Please upload a .js file.',
+            message: 'Invalid file type. Please upload a .js or .zip file.',
         });
         return;
     }
     
-    // Validate file size (1MB limit)
-    const maxSize = 1 * 1024 * 1024; // 1MB
+    // Validate file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
         showError({
-            message: 'File size exceeds 1MB limit. Please use a smaller file.',
+            message: 'File size exceeds 10MB limit. Please use a smaller file.',
         });
         return;
     }

@@ -21,25 +21,42 @@ npm install
 
 ## Usage
 
-### Command Line Interface
+### Command Line Interface (CLI)
 
-Translate a JavaScript file to Scratch 3.0:
+The CLI allows you to translate JavaScript files or zip archives containing JavaScript projects.
 
-```bash
-npm run cli translate examples/simple.js
-```
-
-This will generate a `.sb3` file that you can upload directly to https://scratch.mit.edu/
-
-Or with a custom output file:
+#### Translate a single JavaScript file:
 
 ```bash
-npm run cli translate examples/simple.js -o output.sb3
+npm run cli -- translate examples/simple.js
 ```
 
-### Web Interface
+This will generate a `.sb3` file in the same directory as the input file.
 
-Start the web server:
+#### Translate with a custom output file:
+
+```bash
+npm run cli -- translate examples/simple.js -o output.sb3
+```
+
+#### Translate a zip archive:
+
+You can also provide a zip file containing JavaScript, CSS, and HTML files. Only the JavaScript files will be translated.
+
+```bash
+npm run cli -- translate project.zip -o output.sb3
+```
+
+**Requirements for zip files:**
+- The zip file must contain `.js`, `.css`, and/or `.html` files in the root directory
+- All JavaScript files will be combined and translated
+- CSS and HTML files will be ignored but are allowed in the archive
+
+### Web Interface (UI)
+
+The web interface provides a user-friendly way to translate your code with drag-and-drop support.
+
+#### Start the web server:
 
 ```bash
 npm start
@@ -47,11 +64,22 @@ npm start
 
 Then open your browser to `http://localhost:3000`
 
-The web interface allows you to:
-- Drag and drop JavaScript files for translation
-- Paste code directly into the editor
-- Download the resulting Scratch project as a `.sb3` file
-- Upload the `.sb3` file directly to https://scratch.mit.edu/
+#### Features:
+
+- **Drag and drop** JavaScript files (`.js`) or zip archives (`.zip`) for translation
+- **Click to browse** files from your computer
+- **Paste code directly** into the editor for quick translations
+- **Automatic download** of the resulting Scratch project as a `.sb3` file
+- **File size limit**: 10MB for uploads
+- **Supported formats**: `.js` files or `.zip` archives containing `.js`, `.css`, and `.html` files
+
+#### Usage instructions:
+
+1. Either drag & drop a file onto the drop zone, or click "Choose File" to browse
+2. For zip files: ensure they contain at least one JavaScript file in the root
+3. The translation happens automatically upon file upload
+4. Download the generated `.sb3` file
+5. Upload the `.sb3` file to https://scratch.mit.edu/ to view your project
 
 ## Supported JavaScript Features
 
@@ -132,6 +160,22 @@ js-to-scratch/
 └── README.md
 ```
 
+## Testing
+
+The project includes comprehensive unit and functional tests.
+
+### Run all tests:
+
+```bash
+npm test
+```
+
+### Test structure:
+
+- **Unit tests**: Test individual modules and functions (`tests/unit/`)
+- **Functional tests**: Test end-to-end functionality with real `.sb3` files (`tests/functional/`)
+- **Test fixtures**: Sample JavaScript files and zip archives for testing (`tests/fixtures/`)
+
 ## Development
 
 The project uses:
@@ -139,6 +183,9 @@ The project uses:
 - **commander**: CLI framework
 - **express**: Web server
 - **multer**: File upload handling
+- **adm-zip**: Zip file handling
+- **archiver**: Creating `.sb3` (zip) files
+- **jest**: Testing framework
 
 ## License
 
