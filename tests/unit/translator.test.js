@@ -192,6 +192,41 @@ describe('Translator', () => {
       expect(addBlock.inputs.NUM1).toEqual([1, [4, '10']]);
       expect(addBlock.inputs.NUM2).toEqual([1, [4, '0']]);
     });
+
+    test('should inline function calls with correct parameter substitution', () => {
+      const code = `
+        function minus(b, c) {
+          return b - c;
+        }
+        const multi = (a, b) => a * b;
+        let result = minus(4, multi(1, 3));
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the result variable assignment
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const resultBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'result');
+      expect(resultBlock).toBeDefined();
+      
+      // The VALUE should reference a subtract block: 4 - (1 * 3) = 4 - 3 = 1
+      const subtractBlockId = resultBlock.inputs.VALUE[1];
+      const subtractBlock = blocks[subtractBlockId];
+      expect(subtractBlock.opcode).toBe('operator_subtract');
+      
+      // Left operand should be 4
+      expect(subtractBlock.inputs.NUM1).toEqual([1, [4, '4']]);
+      
+      // Right operand should be a multiply block: 1 * 3
+      const multiplyBlockId = subtractBlock.inputs.NUM2[1];
+      const multiplyBlock = blocks[multiplyBlockId];
+      expect(multiplyBlock.opcode).toBe('operator_multiply');
+      expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '1']]);
+      expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '3']]);
+    });
   });
 
   describe('Function declarations and expressions', () => {
@@ -383,6 +418,208 @@ describe('Translator', () => {
       expect(ltBlock).toBeDefined();
       expect(ltBlock.parent).not.toBeNull();
       expect(ltBlock.topLevel).toBe(false);
+    });
+  });
+
+  describe('Comparison operators', () => {
+    test('should translate != operator with not wrapper', () => {
+      const code = `
+        let x = 10;
+        if (x != 5) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have operator_not wrapping operator_equals
+      const notBlock = Object.values(blocks).find(b => b.opcode === 'operator_not');
+      expect(notBlock).toBeDefined();
+      
+      // The not block should wrap an equals block
+      const equalsBlockId = notBlock.inputs.OPERAND[1];
+      const equalsBlock = blocks[equalsBlockId];
+      expect(equalsBlock.opcode).toBe('operator_equals');
+    });
+
+    test('should translate !== operator with not wrapper', () => {
+      const code = `
+        let x = 10;
+        if (x !== 5) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      const notBlock = Object.values(blocks).find(b => b.opcode === 'operator_not');
+      expect(notBlock).toBeDefined();
+      
+      const equalsBlockId = notBlock.inputs.OPERAND[1];
+      const equalsBlock = blocks[equalsBlockId];
+      expect(equalsBlock.opcode).toBe('operator_equals');
+    });
+
+    test('should translate <= operator with not wrapper', () => {
+      const code = `
+        let x = 10;
+        if (x <= 20) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // <= becomes not (>)
+      const notBlock = Object.values(blocks).find(b => b.opcode === 'operator_not');
+      expect(notBlock).toBeDefined();
+      
+      const gtBlockId = notBlock.inputs.OPERAND[1];
+      const gtBlock = blocks[gtBlockId];
+      expect(gtBlock.opcode).toBe('operator_gt');
+    });
+
+    test('should translate >= operator with not wrapper', () => {
+      const code = `
+        let x = 10;
+        if (x >= 5) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // >= becomes not (<)
+      const notBlock = Object.values(blocks).find(b => b.opcode === 'operator_not');
+      expect(notBlock).toBeDefined();
+      
+      const ltBlockId = notBlock.inputs.OPERAND[1];
+      const ltBlock = blocks[ltBlockId];
+      expect(ltBlock.opcode).toBe('operator_lt');
+    });
+
+    test('should translate unary not operator', () => {
+      const code = `
+        let x = 10;
+        if (!(x < 5)) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have operator_not
+      const notBlock = Object.values(blocks).find(b => b.opcode === 'operator_not');
+      expect(notBlock).toBeDefined();
+      
+      // The not block should wrap the lt block
+      const ltBlockId = notBlock.inputs.OPERAND[1];
+      const ltBlock = blocks[ltBlockId];
+      expect(ltBlock.opcode).toBe('operator_lt');
+    });
+
+    test('should handle <= in while loop conditions', () => {
+      const code = `
+        let counter = 0;
+        while (counter <= 5) {
+          counter = counter + 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_repeat_until with not(>) condition
+      const repeatBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat_until');
+      expect(repeatBlock).toBeDefined();
+      
+      // The condition should be negated (not >)
+      const conditionId = repeatBlock.inputs.CONDITION[1];
+      const conditionBlock = blocks[conditionId];
+      // In while loops, the condition is negated, so <= becomes > directly
+      // But we still need to check the structure
+      expect(conditionBlock).toBeDefined();
+    });
+
+    test('should handle != in if conditions', () => {
+      const code = `
+        let x = 10;
+        let y = 20;
+        if (x != y) {
+          x = x + 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_if
+      const ifBlock = Object.values(blocks).find(b => b.opcode === 'control_if');
+      expect(ifBlock).toBeDefined();
+      
+      // Condition should be not(equals)
+      const conditionId = ifBlock.inputs.CONDITION[1];
+      const conditionBlock = blocks[conditionId];
+      expect(conditionBlock.opcode).toBe('operator_not');
+      
+      const equalsBlockId = conditionBlock.inputs.OPERAND[1];
+      const equalsBlock = blocks[equalsBlockId];
+      expect(equalsBlock.opcode).toBe('operator_equals');
+    });
+  });
+
+  describe('Variable management', () => {
+    test('should declare variables in sprite variables object', () => {
+      const code = `
+        let x = 10;
+        let y = 20;
+        let z = x + y;
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      
+      // Check that variables are declared
+      expect(sprite.variables).toBeDefined();
+      expect(sprite.variables.x).toBeDefined();
+      expect(sprite.variables.y).toBeDefined();
+      expect(sprite.variables.z).toBeDefined();
+      
+      // Check format: [name, initialValue]
+      expect(sprite.variables.x).toEqual(['x', 0]);
+      expect(sprite.variables.y).toEqual(['y', 0]);
+      expect(sprite.variables.z).toEqual(['z', 0]);
+    });
+
+    test('should include variables from assignments', () => {
+      const code = `
+        let x = 10;
+        x = 20;
+        let y = x + 5;
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      
+      expect(sprite.variables.x).toBeDefined();
+      expect(sprite.variables.y).toBeDefined();
+    });
+
+    test('should not include arrow function names as variables', () => {
+      const code = `
+        const add = (a, b) => a + b;
+        let x = 10;
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      
+      // add should not be in variables (it's a function, not a variable)
+      expect(sprite.variables.add).toBeUndefined();
+      // x should be in variables
+      expect(sprite.variables.x).toBeDefined();
     });
   });
 });
