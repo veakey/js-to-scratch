@@ -456,6 +456,8 @@ function astToScratchBlocks(ast) {
             let bodyExpression = funcDef.body;
             
             // If the body is a BlockStatement, find the return statement
+            // Note: This only handles simple functions with a single return statement.
+            // Functions with multiple return paths or conditional returns are not fully supported.
             if (funcDef.body.type === 'BlockStatement') {
               const returnStmt = funcDef.body.body.find(stmt => stmt.type === 'ReturnStatement');
               if (returnStmt && returnStmt.argument) {
