@@ -2,6 +2,7 @@ const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 
 /**
  * Extract a zip file to a temporary directory
@@ -10,7 +11,7 @@ const crypto = require('crypto');
  */
 async function extractZipToTemp(zipSource) {
   const uniqueId = crypto.randomUUID();
-  const tempDir = path.join('/tmp', `js-to-scratch-${uniqueId}`);
+  const tempDir = path.join(os.tmpdir(), `js-to-scratch-${uniqueId}`);
   
   try {
     // Create temporary directory
@@ -80,7 +81,7 @@ async function cleanupTemp(tempDir) {
  */
 async function combineJavaScriptFiles(jsPaths) {
   if (jsPaths.length === 0) {
-    throw new Error('No JavaScript files found in zip');
+    throw new Error('No JavaScript files found in zip archive. Ensure the zip contains .js files in the root directory.');
   }
   
   const codeBlocks = [];
