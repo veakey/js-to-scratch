@@ -100,4 +100,81 @@ describe('Translator', () => {
       expect(UNSUPPORTED_FEATURES).toContain('Promise');
     });
   });
+
+  describe('Block connection properties', () => {
+    test('should only have event block as topLevel', () => {
+      const code = `
+        let x = 10;
+        let y = 20;
+        if (x < y) {
+          x = x + 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Count blocks with topLevel: true
+      const topLevelBlocks = Object.values(blocks).filter(b => b.topLevel === true);
+      
+      // Only the event_whenflagclicked block should be topLevel
+      expect(topLevelBlocks.length).toBe(1);
+      expect(topLevelBlocks[0].opcode).toBe('event_whenflagclicked');
+    });
+
+    test('should have proper parent references for all blocks', () => {
+      const code = `
+        let x = 10;
+        if (x < 5) {
+          x = x + 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // All blocks except the event block should have a parent
+      const blocksWithoutParent = Object.entries(blocks).filter(
+        ([id, block]) => block.parent === null && block.opcode !== 'event_whenflagclicked'
+      );
+      
+      expect(blocksWithoutParent.length).toBe(0);
+    });
+
+    test('should have proper parent references for operator blocks', () => {
+      const code = `
+        let x = 10;
+        let y = x + 5;
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the operator_add block
+      const addBlock = Object.values(blocks).find(b => b.opcode === 'operator_add');
+      
+      expect(addBlock).toBeDefined();
+      expect(addBlock.parent).not.toBeNull();
+      expect(addBlock.topLevel).toBe(false);
+    });
+
+    test('should have proper parent references for comparison blocks', () => {
+      const code = `
+        let x = 10;
+        if (x < 20) {
+          x = 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the operator_lt block
+      const ltBlock = Object.values(blocks).find(b => b.opcode === 'operator_lt');
+      
+      expect(ltBlock).toBeDefined();
+      expect(ltBlock.parent).not.toBeNull();
+      expect(ltBlock.topLevel).toBe(false);
+    });
+  });
 });
