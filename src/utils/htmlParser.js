@@ -9,7 +9,10 @@
  * @returns {string} - Combined JavaScript code from all script tags
  */
 function extractJavaScriptFromHTML(htmlContent) {
-  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  // Match script tags including malformed closing tags with spaces/attributes
+  // Using [^<]* instead of \s* to match any characters except < before the >
+  // This handles cases like </script >, </script\t\n>, etc.
+  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script[^<]*>/gi;
   const scripts = [];
   let match;
 
