@@ -5,23 +5,27 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 const { createSB3File } = require('../translator/sb3Builder');
+const { extractZipToTemp, cleanupTemp, combineJavaScriptFiles } = require('../utils/zipHandler');
 
 const app = express();
 
-// Configure multer with file size limit (1MB) and file filter
+// Configure multer with file size limit (10MB) and file filter
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1 * 1024 * 1024, // 1MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit for zip files
   },
   fileFilter: (req, file, cb) => {
-    // Only accept .js files
+    // Accept .js and .zip files
     if (file.mimetype === 'text/javascript' || 
         file.mimetype === 'application/javascript' ||
-        file.originalname.endsWith('.js')) {
+        file.mimetype === 'application/zip' ||
+        file.mimetype === 'application/x-zip-compressed' ||
+        file.originalname.endsWith('.js') ||
+        file.originalname.endsWith('.zip')) {
       cb(null, true);
     } else {
-      cb(new Error('Only JavaScript files (.js) are allowed'));
+      cb(new Error('Only JavaScript files (.js) or zip archives (.zip) are allowed'));
     }
   }
 });
@@ -34,6 +38,7 @@ app.use(express.json({ limit: '1mb' })); // Limit JSON body size
 // NOTE: For production use, consider adding rate limiting middleware (e.g., express-rate-limit)
 // to prevent abuse of file system operations
 app.post('/api/translate', upload.single('file'), async (req, res) => {
+  let tempDir = null;
   try {
     let code;
 
@@ -46,14 +51,42 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
         });
       }
       
-      code = req.file.buffer.toString('utf-8');
-      
-      // Basic content validation - check if it's valid UTF-8 text
-      if (!code || code.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'File does not contain valid text content',
-        });
+      const isZip = req.file.originalname.endsWith('.zip') || 
+                    req.file.mimetype === 'application/zip' ||
+                    req.file.mimetype === 'application/x-zip-compressed';
+
+      if (isZip) {
+        // Handle zip file
+        try {
+          const { tempDir: extractedDir, files } = await extractZipToTemp(req.file.buffer);
+          tempDir = extractedDir;
+
+          if (files.js.length === 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'No JavaScript files found in the zip archive',
+            });
+          }
+
+          // Combine all JavaScript files
+          code = await combineJavaScriptFiles(files.js);
+        } catch (zipError) {
+          return res.status(400).json({
+            success: false,
+            error: `Failed to process zip file: ${zipError.message}`,
+          });
+        }
+      } else {
+        // Handle single JavaScript file
+        code = req.file.buffer.toString('utf-8');
+        
+        // Basic content validation - check if it's valid UTF-8 text
+        if (!code || code.trim().length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'File does not contain valid text content',
+          });
+        }
       }
     } else if (req.body.code) {
       // Direct code submission
@@ -115,6 +148,11 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
       success: false,
       error: error.message,
     });
+  } finally {
+    // Clean up temp directory if it was created
+    if (tempDir) {
+      await cleanupTemp(tempDir);
+    }
   }
 });
 
@@ -124,7 +162,7 @@ app.use((error, req, res, next) => {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        error: 'File size exceeds 1MB limit',
+        error: 'File size exceeds 10MB limit',
       });
     }
     return res.status(400).json({
@@ -133,7 +171,7 @@ app.use((error, req, res, next) => {
     });
   }
   
-  if (error.message === 'Only JavaScript files (.js) are allowed') {
+  if (error.message === 'Only JavaScript files (.js) or zip archives (.zip) are allowed') {
     return res.status(400).json({
       success: false,
       error: error.message,

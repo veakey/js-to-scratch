@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 const { createSB3File } = require('../translator/sb3Builder');
+const { extractZipToTemp, cleanupTemp, combineJavaScriptFiles } = require('../utils/zipHandler');
 
 const program = new Command();
 
@@ -15,10 +16,11 @@ program
 
 program
   .command('translate')
-  .description('Translate a JavaScript file to Scratch 3.0 format')
-  .argument('<input>', 'Input JavaScript file')
+  .description('Translate a JavaScript file or zip archive to Scratch 3.0 format')
+  .argument('<input>', 'Input JavaScript file (.js) or zip archive (.zip)')
   .option('-o, --output <file>', 'Output file (defaults to input name with .sb3 extension)')
   .action(async (input, options) => {
+    let tempDir = null;
     try {
       // Read input file
       const inputPath = path.resolve(input);
@@ -28,9 +30,36 @@ program
         process.exit(1);
       }
 
-      const code = fs.readFileSync(inputPath, 'utf-8');
+      let code;
+      const isZip = inputPath.endsWith('.zip');
+
+      if (isZip) {
+        // Handle zip file
+        console.log(`📦 Extracting zip file: ${input}`);
+        const { tempDir: extractedDir, files } = await extractZipToTemp(inputPath);
+        tempDir = extractedDir;
+
+        if (files.js.length === 0) {
+          console.error('❌ Error: No JavaScript files found in the zip archive');
+          process.exit(1);
+        }
+
+        console.log(`📖 Found ${files.js.length} JavaScript file(s)`);
+        if (files.css.length > 0) {
+          console.log(`📄 Found ${files.css.length} CSS file(s) (will be ignored)`);
+        }
+        if (files.html.length > 0) {
+          console.log(`📄 Found ${files.html.length} HTML file(s) (will be ignored)`);
+        }
+
+        // Combine all JavaScript files
+        code = await combineJavaScriptFiles(files.js);
+      } else {
+        // Handle single JavaScript file
+        code = fs.readFileSync(inputPath, 'utf-8');
+        console.log(`📖 Reading JavaScript file: ${input}`);
+      }
       
-      console.log(`📖 Reading JavaScript file: ${input}`);
       console.log(`🔍 Checking for unsupported features...`);
 
       // Translate to Scratch
@@ -61,6 +90,11 @@ program
 
       console.error(`\n❌ Error: ${error.message}\n`);
       process.exit(1);
+    } finally {
+      // Clean up temp directory if it was created
+      if (tempDir) {
+        await cleanupTemp(tempDir);
+      }
     }
   });
 
