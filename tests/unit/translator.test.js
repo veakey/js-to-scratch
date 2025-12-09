@@ -101,6 +101,80 @@ describe('Translator', () => {
     });
   });
 
+  describe('Arrow functions and function calls', () => {
+    test('should inline simple arrow function calls', () => {
+      const code = `
+        const add = (a, b) => a + b;
+        const total = add(40, 35);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Check that add function is not created as a separate block/variable
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const addVariableBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'add');
+      expect(addVariableBlock).toBeUndefined();
+      
+      // Check that total is set to an operator_add block
+      const totalBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'total');
+      expect(totalBlock).toBeDefined();
+      
+      // The VALUE input should reference an operator_add block
+      const addBlockId = totalBlock.inputs.VALUE[1];
+      const addBlock = blocks[addBlockId];
+      expect(addBlock.opcode).toBe('operator_add');
+      
+      // Check that the operator_add has correct operands (40 and 35)
+      expect(addBlock.inputs.NUM1).toEqual([1, [4, '40']]);
+      expect(addBlock.inputs.NUM2).toEqual([1, [4, '35']]);
+    });
+
+    test('should handle arrow functions with variable arguments', () => {
+      const code = `
+        const x = 10;
+        const y = 20;
+        const add = (a, b) => a + b;
+        const result = add(x, y);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the result variable assignment
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const resultBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'result');
+      expect(resultBlock).toBeDefined();
+      
+      // The VALUE should reference an operator_add block
+      const addBlockId = resultBlock.inputs.VALUE[1];
+      const addBlock = blocks[addBlockId];
+      expect(addBlock.opcode).toBe('operator_add');
+    });
+
+    test('should handle arrow functions with different operators', () => {
+      const code = `
+        const multiply = (a, b) => a * b;
+        const product = multiply(5, 6);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find multiply operator
+      const multiplyBlock = Object.values(blocks).find(b => b.opcode === 'operator_multiply');
+      expect(multiplyBlock).toBeDefined();
+      expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '5']]);
+      expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '6']]);
+    });
+  });
+
   describe('Block connection properties', () => {
     test('should only have event block as topLevel', () => {
       const code = `

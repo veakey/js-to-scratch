@@ -115,10 +115,41 @@ function getMemberExpressionString(node) {
 function astToScratchBlocks(ast) {
   const blocks = {};
   let blockIdCounter = 0;
+  const functionDefinitions = new Map(); // Store arrow function definitions
 
   function generateBlockId() {
     return `block_${blockIdCounter++}`;
   }
+
+  // First pass: collect arrow function definitions
+  function collectFunctions(node) {
+    if (!node) return;
+
+    if (node.type === 'VariableDeclaration') {
+      node.declarations.forEach(decl => {
+        if (decl.init && decl.init.type === 'ArrowFunctionExpression') {
+          functionDefinitions.set(decl.id.name, {
+            params: decl.init.params,
+            body: decl.init.body
+          });
+        }
+      });
+    }
+
+    // Traverse children
+    for (const key in node) {
+      if (key === 'loc' || key === 'range') continue;
+      const child = node[key];
+      if (Array.isArray(child)) {
+        child.forEach(collectFunctions);
+      } else if (child && typeof child === 'object' && child.type) {
+        collectFunctions(child);
+      }
+    }
+  }
+
+  // Collect all function definitions first
+  collectFunctions(ast);
 
   function convertNode(node, parentId = null) {
     if (!node) return null;
@@ -183,6 +214,10 @@ function astToScratchBlocks(ast) {
         // Variable declaration (let, const, var)
         if (node.declarations.length > 0) {
           const decl = node.declarations[0];
+          // Skip arrow function declarations - they will be inlined when called
+          if (decl.init && decl.init.type === 'ArrowFunctionExpression') {
+            return null;
+          }
           blocks[blockId] = {
             opcode: 'data_setvariableto',
             next: null,
@@ -319,6 +354,35 @@ function astToScratchBlocks(ast) {
     }
   }
 
+  function substituteParameters(expr, paramMap) {
+    if (!expr) return expr;
+
+    // Create a deep copy and substitute parameters
+    function substitute(node) {
+      if (!node) return node;
+
+      if (node.type === 'Identifier' && paramMap.has(node.name)) {
+        // Replace parameter with argument
+        return paramMap.get(node.name);
+      }
+
+      // For all other node types, recursively substitute in children
+      const newNode = { ...node };
+      for (const key in newNode) {
+        if (key === 'loc' || key === 'range') continue;
+        const child = newNode[key];
+        if (Array.isArray(child)) {
+          newNode[key] = child.map(substitute);
+        } else if (child && typeof child === 'object' && child.type) {
+          newNode[key] = substitute(child);
+        }
+      }
+      return newNode;
+    }
+
+    return substitute(expr);
+  }
+
   function convertExpressionToInput(expr, parentBlockId = null) {
     if (!expr) return [1, [10, '0']];
 
@@ -331,6 +395,29 @@ function astToScratchBlocks(ast) {
       
       case 'Identifier':
         return [3, [12, expr.name, expr.name], [10, '']];
+      
+      case 'CallExpression':
+        // Handle function calls by inlining arrow functions
+        if (expr.callee.type === 'Identifier') {
+          const funcName = expr.callee.name;
+          const funcDef = functionDefinitions.get(funcName);
+          
+          if (funcDef) {
+            // Create a parameter substitution map
+            const paramMap = new Map();
+            funcDef.params.forEach((param, index) => {
+              if (index < expr.arguments.length) {
+                paramMap.set(param.name, expr.arguments[index]);
+              }
+            });
+            
+            // Inline the function body with substituted parameters
+            const inlinedBody = substituteParameters(funcDef.body, paramMap);
+            return convertExpressionToInput(inlinedBody, parentBlockId);
+          }
+        }
+        // If not a known function, return default
+        return [1, [10, '0']];
       
       case 'BinaryExpression':
         const opcode = getBinaryOperatorOpcode(expr.operator);
