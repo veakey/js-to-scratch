@@ -264,6 +264,25 @@ function astToScratchBlocks(ast) {
         return null;
 
       case 'CallExpression':
+        // Handle special scratch functions
+        if (node.callee.type === 'Identifier') {
+          if (node.callee.name === 'scratch_say' && node.arguments.length > 0) {
+            // Create a "say" block
+            blocks[blockId] = {
+              opcode: 'looks_say',
+              next: null,
+              parent: parentId,
+              inputs: {
+                MESSAGE: convertExpressionToInput(node.arguments[0], blockId),
+              },
+              fields: {},
+              shadow: false,
+              topLevel: false,
+            };
+            return blockId;
+          }
+        }
+        
         // Function calls - basic support
         blocks[blockId] = {
           opcode: 'procedures_call',

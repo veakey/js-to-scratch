@@ -6,6 +6,8 @@ const path = require('path');
 const { translateToScratch, UnsupportedFeatureError } = require('../translator');
 const { createSB3File } = require('../translator/sb3Builder');
 const { extractZipToTemp, cleanupTemp, combineJavaScriptFiles } = require('../utils/zipHandler');
+const { extractJavaScriptFromHTML, isHTML } = require('../utils/htmlParser');
+const { transformCanvasToScratch } = require('../utils/canvasTransformer');
 
 const program = new Command();
 
@@ -16,8 +18,8 @@ program
 
 program
   .command('translate')
-  .description('Translate a JavaScript file or zip archive to Scratch 3.0 format')
-  .argument('<input>', 'Input JavaScript file (.js) or zip archive (.zip)')
+  .description('Translate a JavaScript/HTML file or zip archive to Scratch 3.0 format')
+  .argument('<input>', 'Input JavaScript file (.js), HTML file (.html), or zip archive (.zip)')
   .option('-o, --output <file>', 'Output file (defaults to input name with .sb3 extension)')
   .action(async (input, options) => {
     let tempDir = null;
@@ -32,6 +34,7 @@ program
 
       let code;
       const isZip = inputPath.endsWith('.zip');
+      const isHtml = inputPath.endsWith('.html') || inputPath.endsWith('.htm');
 
       if (isZip) {
         // Handle zip file
@@ -39,8 +42,8 @@ program
         const { tempDir: extractedDir, files } = await extractZipToTemp(inputPath);
         tempDir = extractedDir;
 
-        if (files.js.length === 0) {
-          console.error('✗ Error: No JavaScript files found in the zip archive');
+        if (files.js.length === 0 && files.html.length === 0) {
+          console.error('✗ Error: No JavaScript or HTML files found in the zip archive');
           process.exit(1);
         }
 
@@ -49,16 +52,35 @@ program
           console.log(`Found ${files.css.length} CSS file(s) (will be ignored)`);
         }
         if (files.html.length > 0) {
-          console.log(`Found ${files.html.length} HTML file(s) (will be ignored)`);
+          console.log(`Found ${files.html.length} HTML file(s) - extracting JavaScript...`);
         }
 
-        // Combine all JavaScript files
-        code = await combineJavaScriptFiles(files.js);
+        // Combine all JavaScript files and extract from HTML
+        const jsCode = files.js.length > 0 ? await combineJavaScriptFiles(files.js) : '';
+        const htmlCode = files.html.length > 0 ? await combineJavaScriptFiles(files.html) : '';
+        const extractedHtmlJs = htmlCode ? extractJavaScriptFromHTML(htmlCode) : '';
+        
+        code = [jsCode, extractedHtmlJs].filter(c => c).join('\n\n');
+      } else if (isHtml) {
+        // Handle single HTML file
+        const htmlContent = fs.readFileSync(inputPath, 'utf-8');
+        console.log(`Reading HTML file: ${input}`);
+        console.log(`Extracting JavaScript from HTML...`);
+        code = extractJavaScriptFromHTML(htmlContent);
+        
+        if (!code) {
+          console.error('✗ Error: No JavaScript code found in HTML file');
+          process.exit(1);
+        }
       } else {
         // Handle single JavaScript file
         code = fs.readFileSync(inputPath, 'utf-8');
         console.log(`Reading JavaScript file: ${input}`);
       }
+      
+      // Transform canvas API calls if present
+      console.log(`Transforming canvas operations...`);
+      code = transformCanvasToScratch(code);
       
       console.log(`Checking for unsupported features...`);
 
