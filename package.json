@@ -11,11 +11,18 @@
     "cli": "node src/cli/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["scratch", "javascript", "translator", "scratch3", "converter"],
+  "keywords": [
+    "scratch",
+    "javascript",
+    "translator",
+    "scratch3",
+    "converter"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "acorn": "^8.15.0",
+    "archiver": "^7.0.1",
     "commander": "^14.0.2",
     "express": "^5.2.1",
     "multer": "^2.0.2"
