@@ -189,8 +189,8 @@ app.get('/api/health', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 js-to-scratch server running on http://localhost:${PORT}`);
-  console.log(`📁 Drag and drop JavaScript files to translate them to Scratch 3.0`);
+  console.log(`js-to-scratch server running on http://localhost:${PORT}`);
+  console.log(`Drag and drop JavaScript files to translate them to Scratch 3.0`);
 });
 
 module.exports = app;

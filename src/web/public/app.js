@@ -155,7 +155,7 @@ function showLoading() {
     resultSection.style.display = 'none';
     errorSection.style.display = 'none';
     translateBtn.disabled = true;
-    translateBtn.textContent = '⏳ Translating...';
+    translateBtn.textContent = 'Translating...';
 }
 
 // Show success message
@@ -163,7 +163,7 @@ function showSuccess() {
     resultSection.style.display = 'block';
     errorSection.style.display = 'none';
     translateBtn.disabled = false;
-    translateBtn.textContent = '🔄 Translate to Scratch';
+    translateBtn.textContent = 'Translate to Scratch';
 
     resultContent.innerHTML = `
         <div class="result-info">
@@ -173,10 +173,10 @@ function showSuccess() {
             <strong>Format:</strong> Scratch 3.0 (.sb3)
         </div>
         <div class="result-info">
-            💡 Your .sb3 file has been downloaded automatically!
+            Your .sb3 file has been downloaded automatically!
         </div>
         <div class="result-info">
-            🚀 You can now upload it to <a href="https://scratch.mit.edu/" target="_blank">scratch.mit.edu</a>
+            You can now upload it to <a href="https://scratch.mit.edu/" target="_blank">scratch.mit.edu</a>
         </div>
     `;
 }
@@ -186,7 +186,7 @@ function showError(error) {
     resultSection.style.display = 'none';
     errorSection.style.display = 'block';
     translateBtn.disabled = false;
-    translateBtn.textContent = '🔄 Translate to Scratch';
+    translateBtn.textContent = 'Translate to Scratch';
 
     let errorHTML = '';
 
@@ -194,7 +194,7 @@ function showError(error) {
         // Unsupported feature error
         errorHTML = `
             <div class="error-detail">
-                <strong>⚠️ Unsupported Feature Detected</strong>
+                <strong>Unsupported Feature Detected</strong>
             </div>
             <div class="error-detail">
                 <strong>Feature:</strong> ${error.feature}
@@ -206,7 +206,7 @@ function showError(error) {
                 ${error.message}
             </div>
             <div class="error-detail" style="margin-top: 15px;">
-                📝 The feature <code>${error.feature}</code> does not exist in Scratch.
+                The feature <code>${error.feature}</code> does not exist in Scratch.
                 <br>Please remove or replace this feature and try again.
             </div>
         `;
@@ -223,4 +223,4 @@ function showError(error) {
 }
 
 // Initialize
-console.log('🎨 JS to Scratch Translator loaded');
+console.log('JS to Scratch Translator loaded');
