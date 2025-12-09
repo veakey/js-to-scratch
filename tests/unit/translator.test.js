@@ -194,6 +194,121 @@ describe('Translator', () => {
     });
   });
 
+  describe('Function declarations and expressions', () => {
+    test('should inline function declarations', () => {
+      const code = `
+        function add(a, b) {
+          return a + b;
+        }
+        const sum = add(10, 20);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Function declaration should not create a variable block
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const addVariableBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'add');
+      expect(addVariableBlock).toBeUndefined();
+      
+      // Check that sum is set to an operator_add block
+      const sumBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'sum');
+      expect(sumBlock).toBeDefined();
+      
+      // The VALUE input should reference an operator_add block
+      const addBlockId = sumBlock.inputs.VALUE[1];
+      const addBlock = blocks[addBlockId];
+      expect(addBlock.opcode).toBe('operator_add');
+      expect(addBlock.inputs.NUM1).toEqual([1, [4, '10']]);
+      expect(addBlock.inputs.NUM2).toEqual([1, [4, '20']]);
+    });
+
+    test('should inline function expressions', () => {
+      const code = `
+        const multiply = function(a, b) {
+          return a * b;
+        };
+        const product = multiply(4, 5);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Function expression should not create a variable block
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const multiplyVariableBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'multiply');
+      expect(multiplyVariableBlock).toBeUndefined();
+      
+      // Check that product is set to an operator_multiply block
+      const productBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'product');
+      expect(productBlock).toBeDefined();
+      
+      const multiplyBlockId = productBlock.inputs.VALUE[1];
+      const multiplyBlock = blocks[multiplyBlockId];
+      expect(multiplyBlock.opcode).toBe('operator_multiply');
+      expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '4']]);
+      expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '5']]);
+    });
+
+    test('should handle nested function calls', () => {
+      const code = `
+        const square = (x) => x * x;
+        
+        function calculate(b, c) {
+          return square(c) + b - c;
+        }
+        
+        const result = calculate(5, 3);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the result variable block
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const resultBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'result');
+      expect(resultBlock).toBeDefined();
+      
+      // Should contain a subtraction operation at the top level
+      const subtractBlockId = resultBlock.inputs.VALUE[1];
+      const subtractBlock = blocks[subtractBlockId];
+      expect(subtractBlock.opcode).toBe('operator_subtract');
+    });
+
+    test('should handle function declarations with variable arguments', () => {
+      const code = `
+        function add(a, b) {
+          return a + b;
+        }
+        
+        const x = 10;
+        const y = 20;
+        const sum = add(x, y);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the sum variable block
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const sumBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'sum');
+      expect(sumBlock).toBeDefined();
+      
+      // Should reference an operator_add block
+      const addBlockId = sumBlock.inputs.VALUE[1];
+      const addBlock = blocks[addBlockId];
+      expect(addBlock.opcode).toBe('operator_add');
+    });
+  });
+
   describe('Block connection properties', () => {
     test('should only have event block as topLevel', () => {
       const code = `

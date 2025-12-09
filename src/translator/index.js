@@ -121,18 +121,27 @@ function astToScratchBlocks(ast) {
     return `block_${blockIdCounter++}`;
   }
 
-  // First pass: collect arrow function definitions
+  // First pass: collect function definitions (arrow functions, function expressions, and function declarations)
   function collectFunctions(node) {
     if (!node) return;
 
+    // Collect arrow functions and function expressions from variable declarations
     if (node.type === 'VariableDeclaration') {
       node.declarations.forEach(decl => {
-        if (decl.init && decl.init.type === 'ArrowFunctionExpression') {
+        if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
           functionDefinitions.set(decl.id.name, {
             params: decl.init.params,
             body: decl.init.body
           });
         }
+      });
+    }
+
+    // Collect named function declarations
+    if (node.type === 'FunctionDeclaration' && node.id) {
+      functionDefinitions.set(node.id.name, {
+        params: node.params,
+        body: node.body
       });
     }
 
@@ -220,8 +229,8 @@ function astToScratchBlocks(ast) {
         // Variable declaration (let, const, var)
         if (node.declarations.length > 0) {
           const decl = node.declarations[0];
-          // Skip arrow function declarations - they will be inlined when called
-          if (decl.init && decl.init.type === 'ArrowFunctionExpression') {
+          // Skip function declarations (arrow functions and function expressions) - they will be inlined when called
+          if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
             return null;
           }
           blocks[blockId] = {
@@ -239,6 +248,10 @@ function astToScratchBlocks(ast) {
           };
         }
         return blockId;
+
+      case 'FunctionDeclaration':
+        // Skip function declarations - they will be inlined when called
+        return null;
 
       case 'ExpressionStatement':
         return convertNode(node.expression, parentId);
@@ -422,7 +435,7 @@ function astToScratchBlocks(ast) {
         return [3, [12, expr.name, expr.name], [10, '']];
       
       case 'CallExpression':
-        // Handle function calls by inlining arrow functions
+        // Handle function calls by inlining functions
         if (expr.callee.type === 'Identifier') {
           const funcName = expr.callee.name;
           const funcDef = functionDefinitions.get(funcName);
@@ -439,8 +452,22 @@ function astToScratchBlocks(ast) {
               }
             });
             
+            // Extract the expression to inline
+            let bodyExpression = funcDef.body;
+            
+            // If the body is a BlockStatement, find the return statement
+            if (funcDef.body.type === 'BlockStatement') {
+              const returnStmt = funcDef.body.body.find(stmt => stmt.type === 'ReturnStatement');
+              if (returnStmt && returnStmt.argument) {
+                bodyExpression = returnStmt.argument;
+              } else {
+                // No return statement found, default to 0
+                return [1, [10, '0']];
+              }
+            }
+            
             // Inline the function body with substituted parameters
-            const inlinedBody = substituteParameters(funcDef.body, paramMap);
+            const inlinedBody = substituteParameters(bodyExpression, paramMap);
             return convertExpressionToInput(inlinedBody, parentBlockId);
           }
         }
