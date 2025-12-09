@@ -1,0 +1,23 @@
+{
+  "name": "js-to-scratch",
+  "version": "1.0.0",
+  "description": "This project aims to translate a js project into a scratch one",
+  "main": "src/translator/index.js",
+  "bin": {
+    "js-to-scratch": "./src/cli/index.js"
+  },
+  "scripts": {
+    "start": "node src/web/server.js",
+    "cli": "node src/cli/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["scratch", "javascript", "translator", "scratch3", "converter"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "commander": "^14.0.2",
+    "express": "^5.2.1",
+    "multer": "^2.0.2"
+  }
+}

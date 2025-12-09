@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS to Scratch Translator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="glass-card header">
+            <h1>🎨 JS to Scratch Translator</h1>
+            <p>Translate JavaScript code to Scratch 3.0 projects</p>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Drag and Drop Area -->
+            <div class="glass-card drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <h2>Drop JavaScript file here</h2>
+                    <p>or</p>
+                    <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+                        Choose File
+                    </button>
+                    <input type="file" id="fileInput" accept=".js" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Code Editor -->
+            <div class="glass-card editor-section">
+                <h3>Or paste your JavaScript code:</h3>
+                <textarea id="codeEditor" placeholder="// Enter your JavaScript code here...
+let x = 10;
+let y = 20;
+
+if (x < y) {
+    // Do something
+}"></textarea>
+                <button class="btn-primary" id="translateBtn">
+                    🔄 Translate to Scratch
+                </button>
+            </div>
+
+            <!-- Result Section -->
+            <div class="glass-card result-section" id="resultSection" style="display: none;">
+                <h3>✅ Translation Result</h3>
+                <div id="resultContent"></div>
+                <button class="btn-success" id="downloadBtn">
+                    ⬇️ Download .sb3.json
+                </button>
+            </div>
+
+            <!-- Error Section -->
+            <div class="glass-card error-section" id="errorSection" style="display: none;">
+                <h3>❌ Error</h3>
+                <div id="errorContent"></div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="glass-card footer">
+            <p>Built with ❤️ using Glass UI design</p>
+            <p class="note">⚠️ Note: Some JavaScript features like window.location, window.alert, console.log are not supported in Scratch</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
