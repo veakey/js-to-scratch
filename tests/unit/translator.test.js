@@ -173,6 +173,25 @@ describe('Translator', () => {
       expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '5']]);
       expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '6']]);
     });
+
+    test('should handle function calls with missing arguments', () => {
+      const code = `
+        const add = (a, b) => a + b;
+        const result = add(10);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Find the add operator
+      const addBlock = Object.values(blocks).find(b => b.opcode === 'operator_add');
+      expect(addBlock).toBeDefined();
+      // First argument should be 10, second should default to 0
+      expect(addBlock.inputs.NUM1).toEqual([1, [4, '10']]);
+      expect(addBlock.inputs.NUM2).toEqual([1, [4, '0']]);
+    });
   });
 
   describe('Block connection properties', () => {

@@ -160,23 +160,13 @@ function astToScratchBlocks(ast) {
       case 'Program':
         // Root node - process all statements
         let prevBlockId = null;
-        node.body.forEach((stmt, index) => {
+        let firstBlockId = null;
+        node.body.forEach((stmt) => {
           const stmtBlockId = convertNode(stmt, null);
           if (stmtBlockId) {
-            if (index === 0) {
-              // First block connects to event_whenflagclicked
-              const eventBlockId = generateBlockId();
-              blocks[eventBlockId] = {
-                opcode: 'event_whenflagclicked',
-                next: stmtBlockId,
-                parent: null,
-                inputs: {},
-                fields: {},
-                shadow: false,
-                topLevel: true,
-              };
-              blocks[stmtBlockId].parent = eventBlockId;
-              blocks[stmtBlockId].topLevel = false;
+            if (firstBlockId === null) {
+              // Track the first non-null block
+              firstBlockId = stmtBlockId;
             }
             if (prevBlockId) {
               blocks[prevBlockId].next = stmtBlockId;
@@ -186,6 +176,22 @@ function astToScratchBlocks(ast) {
             prevBlockId = stmtBlockId;
           }
         });
+        
+        // Create event block and link to first actual block
+        if (firstBlockId) {
+          const eventBlockId = generateBlockId();
+          blocks[eventBlockId] = {
+            opcode: 'event_whenflagclicked',
+            next: firstBlockId,
+            parent: null,
+            inputs: {},
+            fields: {},
+            shadow: false,
+            topLevel: true,
+          };
+          blocks[firstBlockId].parent = eventBlockId;
+          blocks[firstBlockId].topLevel = false;
+        }
         
         // Add control_stop block at the end
         if (prevBlockId) {
@@ -408,6 +414,9 @@ function astToScratchBlocks(ast) {
             funcDef.params.forEach((param, index) => {
               if (index < expr.arguments.length) {
                 paramMap.set(param.name, expr.arguments[index]);
+              } else {
+                // Default missing parameters to 0 (Scratch default for numbers)
+                paramMap.set(param.name, { type: 'Literal', value: 0 });
               }
             });
             
