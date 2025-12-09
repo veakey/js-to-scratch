@@ -337,11 +337,17 @@ function astToScratchBlocks(ast) {
         const isGreater = ['>', '>='].includes(expr.operator);
         
         // Format inputs based on operator type
+        // Scratch uses different input formats depending on the block type:
+        // - Format [1, value]: literal value (shadow)
+        // - Format [2, blockId]: block reference (no shadow)
+        // - Format [3, blockOrValue, shadowValue]: block reference with shadow fallback
         let leftFinal, rightFinal;
         if (isComparison) {
           // Comparison operators use OPERAND1/OPERAND2
-          // For > and >=, use format [3, [12, name, name], [10, ""]] for left operand
-          // For < and <=, use format [2, [12, name, name]] for operands
+          // Note: > and >= operators use format [3] with shadow for left operand
+          // while < and <= use format [2] without shadow. This matches Scratch's
+          // expected format for these operators, particularly when used in
+          // control_repeat_until blocks (which come from negated while conditions).
           if (expr.left.type === 'Identifier') {
             leftFinal = isGreater 
               ? [3, [12, expr.left.name, expr.left.name], [10, '']]
@@ -360,7 +366,8 @@ function astToScratchBlocks(ast) {
             rightFinal = convertExpressionToInput(expr.right);
           }
         } else {
-          // Arithmetic operators use NUM1/NUM2 with format [3, [12, name, name], [4, ""]] for variables
+          // Arithmetic operators use NUM1/NUM2 with format [3, [12, name, name], [4, ""]]
+          // This provides a shadow value ([4, ""]) as a fallback for numeric input.
           leftFinal = (expr.left.type === 'Identifier') 
             ? [3, [12, expr.left.name, expr.left.name], [4, '']] 
             : convertExpressionToInput(expr.left);
@@ -433,10 +440,18 @@ function astToScratchBlocks(ast) {
       case '/': return 'operator_divide';
       case '<': return 'operator_lt';
       case '>': return 'operator_gt';
-      case '<=': return 'operator_lt'; // Scratch doesn't have <=, use < as approximation
-      case '>=': return 'operator_gt'; // Scratch doesn't have >=, use > as approximation
+      case '<=': return 'operator_lt'; 
+        // Note: Scratch doesn't have <=. In negated conditions (e.g., repeat_until),
+        // <= is converted to > through negation, which is semantically correct.
+        // Direct use of <= would be approximate and should be avoided.
+      case '>=': return 'operator_gt'; 
+        // Note: Scratch doesn't have >=. In negated conditions (e.g., repeat_until),
+        // >= is converted to < through negation, which is semantically correct.
+        // Direct use of >= would be approximate and should be avoided.
       case '==': case '===': return 'operator_equals';
-      case '!=': case '!==': return 'operator_equals'; // Will need NOT wrapper
+      case '!=': case '!==': return 'operator_equals'; 
+        // Note: NOT wrapper not implemented yet. != and !== comparisons
+        // will currently produce incorrect results. This is a known limitation.
       default: 
         throw new Error(`Unsupported binary operator: ${operator}`);
     }
