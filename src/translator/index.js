@@ -119,6 +119,7 @@ function astToScratchBlocks(ast) {
   const variables = new Set(); // Store all variable names
   const lists = new Set(); // Store all list/array names
   const objectMappings = new Map(); // Map object names to their flattened properties
+  const functionsWithReturn = new Set(); // Track functions that have return statements
 
   function generateBlockId() {
     return `block_${blockIdCounter++}`;
@@ -136,6 +137,12 @@ function astToScratchBlocks(ast) {
             params: decl.init.params,
             body: decl.init.body
           });
+          // Check if arrow function with block body has a return statement
+          if (decl.init.body.type === 'BlockStatement' && hasReturnStatement(decl.init.body)) {
+            functionsWithReturn.add(decl.id.name);
+            const resultVarName = `${decl.id.name}_result`;
+            variables.add(resultVarName);
+          }
         } else if (decl.init && decl.init.type === 'ArrayExpression') {
           // Array declaration: let arr = [1, 2, 3]
           lists.add(decl.id.name);
@@ -151,6 +158,27 @@ function astToScratchBlocks(ast) {
       functionDefinitions.set(node.id.name, {
         params: node.params,
         body: node.body
+      });
+      // Check if function has a return statement
+      if (hasReturnStatement(node.body)) {
+        functionsWithReturn.add(node.id.name);
+        // Create result variable for this function
+        const resultVarName = `${node.id.name}_result`;
+        variables.add(resultVarName);
+      }
+    }
+    
+    // Check arrow functions and function expressions for return statements
+    if (node.type === 'VariableDeclaration') {
+      node.declarations.forEach(decl => {
+        if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
+          // Arrow functions with block body can have return
+          if (decl.init.body.type === 'BlockStatement' && hasReturnStatement(decl.init.body)) {
+            functionsWithReturn.add(decl.id.name);
+            const resultVarName = `${decl.id.name}_result`;
+            variables.add(resultVarName);
+          }
+        }
       });
     }
 
@@ -220,6 +248,43 @@ function astToScratchBlocks(ast) {
     }
   }
 
+  /**
+   * Check if a function body has a return statement (only for BlockStatement)
+   * Arrow functions without block body have implicit return and can be inlined
+   * @param {Object} body - Function body AST node
+   * @returns {boolean} True if body contains an explicit return statement in a BlockStatement
+   */
+  function hasReturnStatement(body) {
+    if (!body) return false;
+    
+    // Only check BlockStatement - arrow functions without block body can be inlined
+    if (body.type === 'BlockStatement') {
+      // Check all statements in the block
+      for (const stmt of body.body) {
+        if (stmt.type === 'ReturnStatement') {
+          return true;
+        }
+        // Recursively check nested blocks (if statements, loops, etc.)
+        if (stmt.type === 'IfStatement' && stmt.consequent) {
+          if (hasReturnStatement(stmt.consequent)) return true;
+          if (stmt.alternate && hasReturnStatement(stmt.alternate)) return true;
+        }
+        if (stmt.type === 'WhileStatement' && stmt.body) {
+          if (hasReturnStatement(stmt.body)) return true;
+        }
+        if (stmt.type === 'ForStatement' && stmt.body) {
+          if (hasReturnStatement(stmt.body)) return true;
+        }
+        if (stmt.type === 'BlockStatement') {
+          if (hasReturnStatement(stmt)) return true;
+        }
+      }
+    }
+    // Arrow functions without block body (implicit return) return false - they can be inlined
+    
+    return false;
+  }
+
   // Collect all function definitions and variables first
   collectFunctionsAndVariables(ast);
   
@@ -285,11 +350,54 @@ function astToScratchBlocks(ast) {
     checkNode(funcBody);
     return foundRecursive;
   }
+
+  /**
+   * Detect if a function has a return statement
+   * @param {Object} funcBody - Function body AST node
+   * @returns {boolean} True if function has a return statement
+   */
+  function hasReturnStatement(funcBody) {
+    if (!funcBody) return false;
+    
+    let foundReturn = false;
+    
+    function checkNode(node) {
+      if (!node) return;
+      
+      // Check for return statement
+      if (node.type === 'ReturnStatement') {
+        foundReturn = true;
+        return;
+      }
+      
+      // Traverse children
+      for (const key in node) {
+        if (key === 'loc' || key === 'range') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          child.forEach(checkNode);
+        } else if (child && typeof child === 'object' && child.type) {
+          checkNode(child);
+        }
+      }
+    }
+    
+    checkNode(funcBody);
+    return foundReturn;
+  }
   
-  // Detect recursive functions
+  // Detect recursive functions and functions with return statements
   functionDefinitions.forEach((funcDef, funcName) => {
     if (isRecursive(funcName, funcDef.body)) {
       recursiveFunctions.add(funcName);
+    }
+    
+    // Detect functions with return statements
+    if (hasReturnStatement(funcDef.body)) {
+      functionsWithReturn.add(funcName);
+      // Create result variable for this function
+      const resultVarName = `${funcName}_result`;
+      variables.add(resultVarName);
     }
     
     // Remove function name (it's not a variable)
@@ -522,7 +630,91 @@ function astToScratchBlocks(ast) {
         if (node.declarations.length > 0) {
           const decl = node.declarations[0];
           // Skip function declarations (arrow functions and function expressions) - they will be inlined when called
+          // BUT if they have return in a block body, they need to be handled as procedures
           if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
+            // If it has return in block body, create procedure block
+            if (decl.init.body.type === 'BlockStatement' && hasReturnStatement(decl.init.body)) {
+              const funcName = decl.id.name;
+              const procBlockId = generateBlockId();
+              const paramIds = decl.init.params.map((param, idx) => {
+                const paramName = param.name || (param.type === 'Identifier' ? param.name : `param${idx}`);
+                return paramName;
+              });
+              
+              blocks[procBlockId] = {
+                opcode: 'procedures_definition',
+                next: null,
+                parent: parentId,
+                inputs: {},
+                fields: {},
+                shadow: false,
+                topLevel: true,
+                mutation: {
+                  tagName: 'mutation',
+                  proccode: funcName,
+                  argumentids: JSON.stringify(paramIds),
+                  warp: 'false',
+                  children: []
+                }
+              };
+              
+              // Process function body - handle return statements by converting to variable assignment
+              let bodyStartId = null;
+              if (decl.init.body && decl.init.body.type === 'BlockStatement') {
+                let prevStmtId = null;
+                decl.init.body.body.forEach((stmt, idx) => {
+                  if (stmt.type === 'ReturnStatement') {
+                    // Convert return to variable assignment: functionName_result = expr
+                    if (stmt.argument) {
+                      const resultVarName = `${funcName}_result`;
+                      const assignBlockId = generateBlockId();
+                      blocks[assignBlockId] = {
+                        opcode: 'data_setvariableto',
+                        next: null,
+                        parent: prevStmtId || procBlockId,
+                        inputs: {
+                          VALUE: convertExpressionToInput(stmt.argument, assignBlockId),
+                        },
+                        fields: {
+                          VARIABLE: [resultVarName, resultVarName],
+                        },
+                        shadow: false,
+                        topLevel: false,
+                      };
+                      
+                      if (prevStmtId) {
+                        blocks[prevStmtId].next = assignBlockId;
+                        blocks[assignBlockId].parent = prevStmtId;
+                      } else {
+                        bodyStartId = assignBlockId;
+                        blocks[assignBlockId].parent = procBlockId;
+                      }
+                      prevStmtId = assignBlockId;
+                    }
+                  } else {
+                    const stmtId = convertNode(stmt, prevStmtId || procBlockId);
+                    if (stmtId) {
+                      if (prevStmtId) {
+                        blocks[prevStmtId].next = stmtId;
+                        blocks[stmtId].parent = prevStmtId;
+                      } else {
+                        bodyStartId = stmtId;
+                        blocks[stmtId].parent = procBlockId;
+                      }
+                      prevStmtId = stmtId;
+                    }
+                  }
+                });
+              }
+              
+              if (bodyStartId) {
+                blocks[procBlockId].next = bodyStartId;
+                blocks[bodyStartId].parent = procBlockId;
+              }
+              
+              return procBlockId;
+            }
+            // Arrow functions without block body or without return are inlined
             return null;
           }
           // Skip array declarations - they are handled separately in lists object
@@ -546,9 +738,11 @@ function astToScratchBlocks(ast) {
         return blockId;
 
       case 'FunctionDeclaration':
-        // Function declarations: if recursive, create procedure block; otherwise skip (will be inlined)
-        if (recursiveFunctions.has(node.id.name)) {
-          // Create procedures_definition block for recursive functions
+        // Function declarations: if recursive OR has return, create procedure block; otherwise skip (will be inlined)
+        const needsProcedure = recursiveFunctions.has(node.id.name) || functionsWithReturn.has(node.id.name);
+        
+        if (needsProcedure) {
+          // Create procedures_definition block
           const procBlockId = generateBlockId();
           const paramIds = node.params.map((param, idx) => {
             const paramName = param.name || (param.type === 'Identifier' ? param.name : `param${idx}`);
@@ -572,28 +766,48 @@ function astToScratchBlocks(ast) {
             }
           };
           
-          // Process function body - need to handle return statements specially
+          // Process function body - handle return statements by converting to variable assignment
           let bodyStartId = null;
           if (node.body && node.body.type === 'BlockStatement') {
-            // Convert body statements, but handle return specially
             let prevStmtId = null;
             node.body.body.forEach((stmt, idx) => {
               if (stmt.type === 'ReturnStatement') {
-                // For recursive functions, return values need special handling
-                // For now, we'll just process the return expression
+                // Convert return to variable assignment: functionName_result = expr
                 if (stmt.argument) {
-                  const returnExprId = convertExpressionToInput(stmt.argument, procBlockId);
-                  // In Scratch procedures, return is implicit - last value is returned
-                  // We'll need to store it in a special variable or handle it differently
+                  const resultVarName = `${node.id.name}_result`;
+                  const assignBlockId = generateBlockId();
+                  blocks[assignBlockId] = {
+                    opcode: 'data_setvariableto',
+                    next: null,
+                    parent: prevStmtId || procBlockId,
+                    inputs: {
+                      VALUE: convertExpressionToInput(stmt.argument, assignBlockId),
+                    },
+                    fields: {
+                      VARIABLE: [resultVarName, resultVarName],
+                    },
+                    shadow: false,
+                    topLevel: false,
+                  };
+                  
+                  if (prevStmtId) {
+                    blocks[prevStmtId].next = assignBlockId;
+                    blocks[assignBlockId].parent = prevStmtId;
+                  } else {
+                    bodyStartId = assignBlockId;
+                    blocks[assignBlockId].parent = procBlockId;
+                  }
+                  prevStmtId = assignBlockId;
                 }
               } else {
-                const stmtId = convertNode(stmt, procBlockId);
+                const stmtId = convertNode(stmt, prevStmtId || procBlockId);
                 if (stmtId) {
                   if (prevStmtId) {
                     blocks[prevStmtId].next = stmtId;
                     blocks[stmtId].parent = prevStmtId;
                   } else {
                     bodyStartId = stmtId;
+                    blocks[stmtId].parent = procBlockId;
                   }
                   prevStmtId = stmtId;
                 }
@@ -602,16 +816,13 @@ function astToScratchBlocks(ast) {
           }
           
           if (bodyStartId) {
-            // Link body to procedure definition
-            // Note: Scratch procedures use a special input structure
-            // For now, we'll store the body start ID in a custom way
             blocks[procBlockId].next = bodyStartId;
             blocks[bodyStartId].parent = procBlockId;
           }
           
           return procBlockId;
         }
-        // Non-recursive functions are skipped (will be inlined when called)
+        // Non-recursive functions without return are skipped (will be inlined when called)
         return null;
 
       case 'ExpressionStatement':
@@ -1090,13 +1301,14 @@ function astToScratchBlocks(ast) {
         return [1, [10, '0']];
       
       case 'CallExpression':
-        // Handle function calls: recursive functions use procedures_call, others are inlined
+        // Handle function calls: recursive functions or functions with return use procedures_call, others are inlined
         if (expr.callee.type === 'Identifier') {
           const funcName = expr.callee.name;
           
           // Check if it's a recursive function
-          if (recursiveFunctions.has(funcName)) {
-            // Create procedures_call block for recursive functions
+          // OR if it's a non-recursive function with return (needs procedure for return handling)
+          if (recursiveFunctions.has(funcName) || functionsWithReturn.has(funcName)) {
+            // Create procedures_call block
             const callBlockId = generateBlockId();
             const funcDef = functionDefinitions.get(funcName);
             const paramIds = funcDef ? funcDef.params.map((param, idx) => {
@@ -1129,10 +1341,18 @@ function astToScratchBlocks(ast) {
                 warp: 'false'
               }
             };
+            
+            // If function has return, we need to return the result variable
+            if (functionsWithReturn.has(funcName)) {
+              const resultVarName = `${funcName}_result`;
+              // Return reference to the result variable
+              return [3, [12, resultVarName, resultVarName], [10, '']];
+            }
+            
             return [2, callBlockId];
           }
           
-          // Non-recursive function: inline it
+          // Non-recursive function without return: inline it
           const funcDef = functionDefinitions.get(funcName);
           
           if (funcDef) {

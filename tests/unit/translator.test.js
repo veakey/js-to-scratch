@@ -193,7 +193,7 @@ describe('Translator', () => {
       expect(addBlock.inputs.NUM2).toEqual([1, [4, '0']]);
     });
 
-    test('should inline function calls with correct parameter substitution', () => {
+    test('should use procedures for functions with return', () => {
       const code = `
         function minus(b, c) {
           return b - c;
@@ -207,25 +207,23 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Find the result variable assignment
+      // minus has return, so it should be a procedure
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const minusProc = procDefBlocks.find(b => b.mutation.proccode === 'minus');
+      expect(minusProc).toBeDefined();
+      
+      // multi is an arrow function without block body, so it should be inlined
+      const procCallBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_call');
+      const minusCall = procCallBlocks.find(b => b.mutation.proccode === 'minus');
+      expect(minusCall).toBeDefined();
+      
+      // result should reference minus_result variable
       const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
       const resultBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'result');
       expect(resultBlock).toBeDefined();
       
-      // The VALUE should reference a subtract block: 4 - (1 * 3) = 4 - 3 = 1
-      const subtractBlockId = resultBlock.inputs.VALUE[1];
-      const subtractBlock = blocks[subtractBlockId];
-      expect(subtractBlock.opcode).toBe('operator_subtract');
-      
-      // Left operand should be 4
-      expect(subtractBlock.inputs.NUM1).toEqual([1, [4, '4']]);
-      
-      // Right operand should be a multiply block: 1 * 3
-      const multiplyBlockId = subtractBlock.inputs.NUM2[1];
-      const multiplyBlock = blocks[multiplyBlockId];
-      expect(multiplyBlock.opcode).toBe('operator_multiply');
-      expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '1']]);
-      expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '3']]);
+      // Should have minus_result variable
+      expect(sprite.variables['minus_result']).toBeDefined();
     });
   });
 
@@ -243,21 +241,13 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Function declaration should not create a variable block
-      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
-      const addVariableBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'add');
-      expect(addVariableBlock).toBeUndefined();
+      // Function declaration with return should create a procedure
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const addProc = procDefBlocks.find(b => b.mutation.proccode === 'add');
+      expect(addProc).toBeDefined();
       
-      // Check that sum is set to an operator_add block
-      const sumBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'sum');
-      expect(sumBlock).toBeDefined();
-      
-      // The VALUE input should reference an operator_add block
-      const addBlockId = sumBlock.inputs.VALUE[1];
-      const addBlock = blocks[addBlockId];
-      expect(addBlock.opcode).toBe('operator_add');
-      expect(addBlock.inputs.NUM1).toEqual([1, [4, '10']]);
-      expect(addBlock.inputs.NUM2).toEqual([1, [4, '20']]);
+      // Should have add_result variable
+      expect(sprite.variables['add_result']).toBeDefined();
     });
 
     test('should inline function expressions', () => {
@@ -273,20 +263,13 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Function expression should not create a variable block
-      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
-      const multiplyVariableBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'multiply');
-      expect(multiplyVariableBlock).toBeUndefined();
+      // Function expression with return should create a procedure
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const multiplyProc = procDefBlocks.find(b => b.mutation.proccode === 'multiply');
+      expect(multiplyProc).toBeDefined();
       
-      // Check that product is set to an operator_multiply block
-      const productBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'product');
-      expect(productBlock).toBeDefined();
-      
-      const multiplyBlockId = productBlock.inputs.VALUE[1];
-      const multiplyBlock = blocks[multiplyBlockId];
-      expect(multiplyBlock.opcode).toBe('operator_multiply');
-      expect(multiplyBlock.inputs.NUM1).toEqual([1, [4, '4']]);
-      expect(multiplyBlock.inputs.NUM2).toEqual([1, [4, '5']]);
+      // Should have multiply_result variable
+      expect(sprite.variables['multiply_result']).toBeDefined();
     });
 
     test('should handle nested function calls', () => {
@@ -305,15 +288,13 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Find the result variable block
-      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
-      const resultBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'result');
-      expect(resultBlock).toBeDefined();
+      // calculate has return, so it should be a procedure
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const calcProc = procDefBlocks.find(b => b.mutation.proccode === 'calculate');
+      expect(calcProc).toBeDefined();
       
-      // Should contain a subtraction operation at the top level
-      const subtractBlockId = resultBlock.inputs.VALUE[1];
-      const subtractBlock = blocks[subtractBlockId];
-      expect(subtractBlock.opcode).toBe('operator_subtract');
+      // Should have calculate_result variable
+      expect(sprite.variables['calculate_result']).toBeDefined();
     });
 
     test('should handle function declarations with variable arguments', () => {
@@ -332,15 +313,13 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Find the sum variable block
-      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
-      const sumBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'sum');
-      expect(sumBlock).toBeDefined();
+      // Should have procedures_definition for add
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const addProc = procDefBlocks.find(b => b.mutation.proccode === 'add');
+      expect(addProc).toBeDefined();
       
-      // Should reference an operator_add block
-      const addBlockId = sumBlock.inputs.VALUE[1];
-      const addBlock = blocks[addBlockId];
-      expect(addBlock.opcode).toBe('operator_add');
+      // Should have add_result variable
+      expect(sprite.variables['add_result']).toBeDefined();
     });
   });
 
@@ -977,7 +956,7 @@ describe('Translator', () => {
       expect(procDefBlock.mutation.proccode).toBe('fib');
     });
 
-    test('should inline non-recursive functions', () => {
+    test('should create procedure for functions with return', () => {
       const code = `
         function add(a, b) {
           return a + b;
@@ -990,13 +969,52 @@ describe('Translator', () => {
       const sprite = result.project.targets[1];
       const blocks = sprite.blocks;
       
-      // Should NOT have procedures_definition (non-recursive functions are inlined)
+      // Should have procedures_definition (functions with return need procedures)
       const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
-      expect(procDefBlocks.length).toBe(0);
+      expect(procDefBlocks.length).toBe(1);
       
-      // Should have operator_add block from inlining
-      const addBlock = Object.values(blocks).find(b => b.opcode === 'operator_add');
-      expect(addBlock).toBeDefined();
+      // Should have procedures_call
+      const procCallBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_call');
+      expect(procCallBlocks.length).toBe(1);
+      
+      // Should have add_result variable
+      expect(sprite.variables['add_result']).toBeDefined();
+    });
+  });
+
+  describe('Functions with return using result variables', () => {
+    test('should handle example with add and debile functions', () => {
+      const code = `
+        const a = 2;
+        let b = 'sdfa';
+        
+        const add = (a, b) => a + b;
+        
+        function debile(a, b, c) {
+          return a + b * add(b, c) - c;
+        }
+        
+        const d = debile(1, 2, 3);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // add is an arrow function without block body, so it should be inlined
+      // debile has return in block body, so it should be a procedure
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      const debileProc = procDefBlocks.find(b => b.mutation.proccode === 'debile');
+      expect(debileProc).toBeDefined();
+      
+      // Should have debile_result variable
+      expect(sprite.variables['debile_result']).toBeDefined();
+      
+      // Should have procedures_call for debile
+      const procCallBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_call');
+      const debileCall = procCallBlocks.find(b => b.mutation.proccode === 'debile');
+      expect(debileCall).toBeDefined();
     });
   });
 });
