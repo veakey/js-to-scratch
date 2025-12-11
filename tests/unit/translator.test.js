@@ -622,4 +622,381 @@ describe('Translator', () => {
       expect(sprite.variables.x).toBeDefined();
     });
   });
+
+  describe('For loops', () => {
+    test('should translate simple for loop with literals', () => {
+      const code = `
+        for (let i = 0; i < 5; i++) {
+          let x = i;
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_repeat block
+      const repeatBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat');
+      expect(repeatBlock).toBeDefined();
+      
+      // Should have variable i initialized
+      expect(sprite.variables.i).toBeDefined();
+    });
+
+    test('should translate simple for loop with variables', () => {
+      const code = `
+        let n = 10;
+        for (let i = 0; i < n; i++) {
+          let x = i;
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_repeat block
+      const repeatBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat');
+      expect(repeatBlock).toBeDefined();
+    });
+
+    test('should translate for loop with <= condition', () => {
+      const code = `
+        for (let i = 0; i <= 5; i++) {
+          let x = i;
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_repeat block
+      const repeatBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat');
+      expect(repeatBlock).toBeDefined();
+    });
+
+    test('should translate complex for loop to repeat_until', () => {
+      const code = `
+        let x = 0;
+        for (let i = 0; x < 10; i++) {
+          x = x + 1;
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Complex loops should use control_repeat_until
+      const repeatUntilBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat_until');
+      expect(repeatUntilBlock).toBeDefined();
+    });
+
+    test('should translate for loop with custom start and end', () => {
+      const code = `
+        for (let i = 5; i < 10; i++) {
+          let x = i;
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have control_repeat block
+      const repeatBlock = Object.values(blocks).find(b => b.opcode === 'control_repeat');
+      expect(repeatBlock).toBeDefined();
+      
+      // Should initialize i to 5
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const initBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'i');
+      expect(initBlock).toBeDefined();
+    });
+
+    test('should handle nested for loops', () => {
+      const code = `
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 2; j++) {
+            let x = i + j;
+          }
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have multiple repeat blocks
+      const repeatBlocks = Object.values(blocks).filter(b => b.opcode === 'control_repeat');
+      expect(repeatBlocks.length).toBeGreaterThanOrEqual(2);
+      
+      // Should have both i and j variables
+      expect(sprite.variables.i).toBeDefined();
+      expect(sprite.variables.j).toBeDefined();
+    });
+  });
+
+  describe('Arrays and lists', () => {
+    test('should create list from array declaration', () => {
+      const code = `
+        let arr = [1, 2, 3];
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      
+      // Should have list 'arr' with initial values
+      expect(sprite.lists).toBeDefined();
+      expect(sprite.lists.arr).toBeDefined();
+      expect(sprite.lists.arr[0]).toBe('arr');
+      expect(sprite.lists.arr[1]).toEqual(['1', '2', '3']);
+    });
+
+    test('should translate array access arr[i]', () => {
+      const code = `
+        let arr = [1, 2, 3];
+        let x = arr[0];
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_itemoflist block
+      const itemBlock = Object.values(blocks).find(b => b.opcode === 'data_itemoflist');
+      expect(itemBlock).toBeDefined();
+      expect(itemBlock.fields.LIST[0]).toBe('arr');
+    });
+
+    test('should translate arr.length', () => {
+      const code = `
+        let arr = [1, 2, 3];
+        let len = arr.length;
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_lengthoflist block
+      const lengthBlock = Object.values(blocks).find(b => b.opcode === 'data_lengthoflist');
+      expect(lengthBlock).toBeDefined();
+      expect(lengthBlock.fields.LIST[0]).toBe('arr');
+    });
+
+    test('should translate arr.push(x)', () => {
+      const code = `
+        let arr = [1, 2];
+        arr.push(3);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_addtolist block
+      const addBlock = Object.values(blocks).find(b => b.opcode === 'data_addtolist');
+      expect(addBlock).toBeDefined();
+      expect(addBlock.fields.LIST[0]).toBe('arr');
+    });
+
+    test('should translate arr.pop()', () => {
+      const code = `
+        let arr = [1, 2, 3];
+        arr.pop();
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_deleteoflist block
+      const deleteBlock = Object.values(blocks).find(b => b.opcode === 'data_deleteoflist');
+      expect(deleteBlock).toBeDefined();
+      expect(deleteBlock.fields.LIST[0]).toBe('arr');
+    });
+
+    test('should translate arr[i] = value', () => {
+      const code = `
+        let arr = [1, 2, 3];
+        arr[0] = 10;
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_replaceitemoflist block
+      const replaceBlock = Object.values(blocks).find(b => b.opcode === 'data_replaceitemoflist');
+      expect(replaceBlock).toBeDefined();
+      expect(replaceBlock.fields.LIST[0]).toBe('arr');
+    });
+  });
+
+  describe('Objects', () => {
+    test('should create flattened variables from object declaration', () => {
+      const code = `
+        let obj = {a: 1, b: 2};
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      
+      // Should have flattened variables obj_a and obj_b
+      expect(sprite.variables['obj_a']).toBeDefined();
+      expect(sprite.variables['obj_b']).toBeDefined();
+      expect(sprite.variables['obj_a']).toEqual(['obj_a', 1]);
+      expect(sprite.variables['obj_b']).toEqual(['obj_b', 2]);
+    });
+
+    test('should translate obj.prop access', () => {
+      const code = `
+        let obj = {a: 1, b: 2};
+        let x = obj.a;
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should reference obj_a variable
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const xBlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'x');
+      expect(xBlock).toBeDefined();
+    });
+
+    test('should translate obj["prop"] access', () => {
+      const code = `
+        let obj = {a: 1, b: 2};
+        let x = obj['a'];
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      
+      // Should have obj_a variable
+      expect(sprite.variables['obj_a']).toBeDefined();
+    });
+
+    test('should translate obj.prop = value assignment', () => {
+      const code = `
+        let obj = {a: 1, b: 2};
+        obj.a = 10;
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have data_setvariableto for obj_a
+      const setVariableBlocks = Object.values(blocks).filter(b => b.opcode === 'data_setvariableto');
+      const objABlock = setVariableBlocks.find(b => b.fields.VARIABLE[0] === 'obj_a');
+      expect(objABlock).toBeDefined();
+    });
+  });
+
+  describe('Recursive functions', () => {
+    test('should detect and create procedure for recursive function', () => {
+      const code = `
+        function factorial(n) {
+          if (n <= 1) {
+            return 1;
+          }
+          return n * factorial(n - 1);
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have procedures_definition block
+      const procDefBlock = Object.values(blocks).find(b => b.opcode === 'procedures_definition');
+      expect(procDefBlock).toBeDefined();
+      expect(procDefBlock.mutation.proccode).toBe('factorial');
+    });
+
+    test('should create procedures_call for recursive function calls', () => {
+      const code = `
+        function factorial(n) {
+          if (n <= 1) {
+            return 1;
+          }
+          return n * factorial(n - 1);
+        }
+        let result = factorial(5);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have procedures_call block
+      const procCallBlock = Object.values(blocks).find(b => b.opcode === 'procedures_call');
+      expect(procCallBlock).toBeDefined();
+      expect(procCallBlock.mutation.proccode).toBe('factorial');
+    });
+
+    test('should handle fibonacci recursive function', () => {
+      const code = `
+        function fib(n) {
+          if (n <= 1) {
+            return n;
+          }
+          return fib(n - 1) + fib(n - 2);
+        }
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should have procedures_definition block
+      const procDefBlock = Object.values(blocks).find(b => b.opcode === 'procedures_definition');
+      expect(procDefBlock).toBeDefined();
+      expect(procDefBlock.mutation.proccode).toBe('fib');
+    });
+
+    test('should inline non-recursive functions', () => {
+      const code = `
+        function add(a, b) {
+          return a + b;
+        }
+        let result = add(3, 4);
+      `;
+      const result = translateToScratch(code);
+      
+      expect(result.success).toBe(true);
+      const sprite = result.project.targets[1];
+      const blocks = sprite.blocks;
+      
+      // Should NOT have procedures_definition (non-recursive functions are inlined)
+      const procDefBlocks = Object.values(blocks).filter(b => b.opcode === 'procedures_definition');
+      expect(procDefBlocks.length).toBe(0);
+      
+      // Should have operator_add block from inlining
+      const addBlock = Object.values(blocks).find(b => b.opcode === 'operator_add');
+      expect(addBlock).toBeDefined();
+    });
+  });
 });

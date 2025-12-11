@@ -117,18 +117,15 @@ function astToScratchBlocks(ast) {
   let blockIdCounter = 0;
   const functionDefinitions = new Map(); // Store arrow function definitions
   const variables = new Set(); // Store all variable names
+  const lists = new Set(); // Store all list/array names
+  const objectMappings = new Map(); // Map object names to their flattened properties
 
   function generateBlockId() {
     return `block_${blockIdCounter++}`;
   }
 
-<<<<<<< HEAD
-  // First pass: collect function definitions (arrow functions, function expressions, and function declarations)
-  function collectFunctions(node) {
-=======
-  // First pass: collect function definitions (both arrow and regular) and variables
+  // First pass: collect function definitions (both arrow and regular), variables, and arrays
   function collectFunctionsAndVariables(node) {
->>>>>>> 19f29ad (feat: support comparison operators and function declarations with return)
     if (!node) return;
 
     // Collect arrow functions and function expressions from variable declarations
@@ -139,6 +136,9 @@ function astToScratchBlocks(ast) {
             params: decl.init.params,
             body: decl.init.body
           });
+        } else if (decl.init && decl.init.type === 'ArrayExpression') {
+          // Array declaration: let arr = [1, 2, 3]
+          lists.add(decl.id.name);
         } else {
           // Collect variable name
           variables.add(decl.id.name);
@@ -146,17 +146,66 @@ function astToScratchBlocks(ast) {
       });
     }
 
-<<<<<<< HEAD
-    // Collect named function declarations
-    if (node.type === 'FunctionDeclaration' && node.id) {
-=======
     // Collect function declarations (function name() { ... })
     if (node.type === 'FunctionDeclaration') {
->>>>>>> 19f29ad (feat: support comparison operators and function declarations with return)
       functionDefinitions.set(node.id.name, {
         params: node.params,
         body: node.body
       });
+    }
+
+    // Detect array access: arr[i], arr.length
+    if (node.type === 'MemberExpression') {
+      if (node.object.type === 'Identifier' && 
+          (node.computed || node.property.name === 'length')) {
+        // arr[i] or arr.length
+        lists.add(node.object.name);
+      }
+    }
+
+    // Detect array methods: arr.push(), arr.pop(), etc.
+    if (node.type === 'CallExpression' && 
+        node.callee.type === 'MemberExpression' &&
+        node.callee.object.type === 'Identifier') {
+      const methodName = node.callee.property.name;
+      if (['push', 'pop', 'shift', 'unshift', 'splice', 'slice'].includes(methodName)) {
+        lists.add(node.callee.object.name);
+      }
+    }
+
+    // Detect object expressions: {a: 1, b: 2}
+    if (node.type === 'VariableDeclaration') {
+      node.declarations.forEach(decl => {
+        if (decl.init && decl.init.type === 'ObjectExpression') {
+          const objName = decl.id.name;
+          const props = [];
+          decl.init.properties.forEach(prop => {
+            if (prop.key.type === 'Identifier' || 
+                (prop.key.type === 'Literal' && typeof prop.key.value === 'string')) {
+              const propName = prop.key.name || prop.key.value;
+              props.push(propName);
+              // Create flattened variable name: obj_prop
+              const flatName = `${objName}_${propName}`;
+              variables.add(flatName);
+            }
+          });
+          objectMappings.set(objName, props);
+        }
+      });
+    }
+
+    // Detect object property access: obj.prop, obj['prop']
+    if (node.type === 'MemberExpression' &&
+        node.object.type === 'Identifier' &&
+        !node.computed && 
+        node.property.type === 'Identifier') {
+      // obj.prop - check if obj is in objectMappings
+      const objName = node.object.name;
+      if (objectMappings.has(objName)) {
+        const propName = node.property.name;
+        const flatName = `${objName}_${propName}`;
+        variables.add(flatName);
+      }
     }
 
     // Traverse children
@@ -196,8 +245,53 @@ function astToScratchBlocks(ast) {
 
   collectVariableReferences(ast);
   
-  // Third pass: remove function names and function parameter names from variables
+  // Third pass: detect recursive functions and remove function names/parameters from variables
+  const recursiveFunctions = new Set(); // Track which functions are recursive
+  
+  /**
+   * Detect if a function is recursive by checking if it calls itself
+   * @param {string} funcName - Name of the function to check
+   * @param {Object} funcBody - Function body AST node
+   * @returns {boolean} True if function is recursive
+   */
+  function isRecursive(funcName, funcBody) {
+    if (!funcBody) return false;
+    
+    let foundRecursive = false;
+    
+    function checkNode(node) {
+      if (!node) return;
+      
+      // Check for function call with same name
+      if (node.type === 'CallExpression' &&
+          node.callee.type === 'Identifier' &&
+          node.callee.name === funcName) {
+        foundRecursive = true;
+        return;
+      }
+      
+      // Traverse children
+      for (const key in node) {
+        if (key === 'loc' || key === 'range') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          child.forEach(checkNode);
+        } else if (child && typeof child === 'object' && child.type) {
+          checkNode(child);
+        }
+      }
+    }
+    
+    checkNode(funcBody);
+    return foundRecursive;
+  }
+  
+  // Detect recursive functions
   functionDefinitions.forEach((funcDef, funcName) => {
+    if (isRecursive(funcName, funcDef.body)) {
+      recursiveFunctions.add(funcName);
+    }
+    
     // Remove function name (it's not a variable)
     variables.delete(funcName);
     // Remove function parameter names (they're not real variables)
@@ -207,6 +301,156 @@ function astToScratchBlocks(ast) {
       variables.delete(paramName);
     });
   });
+
+  /**
+   * Convert a complex for loop to a while loop equivalent
+   * @param {Object} node - ForStatement AST node
+   * @param {Object} analysis - Result from analyzeForLoop
+   * @param {string|null} parentId - Parent block ID
+   * @returns {string} Block ID of the first block created
+   */
+  function convertComplexForLoop(node, analysis, parentId) {
+    // Convert: for (init; test; update) { body }
+    // To: init; while (test) { body; update; }
+    
+    let firstBlockId = null;
+    let prevBlockId = null;
+    
+    // 1. Process init statement (if exists)
+    if (node.init) {
+      const initBlockId = convertNode(node.init, parentId);
+      if (initBlockId) {
+        firstBlockId = initBlockId;
+        prevBlockId = initBlockId;
+      }
+    }
+    
+    // 2. Create while loop with test condition
+    const whileBlockId = generateBlockId();
+    blocks[whileBlockId] = {
+      opcode: 'control_repeat_until',
+      next: null,
+      parent: prevBlockId || parentId,
+      inputs: {
+        CONDITION: convertExpressionToInput(negateExpression(analysis.condition || { type: 'Literal', value: true }), whileBlockId),
+        SUBSTACK: null,
+      },
+      fields: {},
+      shadow: false,
+      topLevel: false,
+    };
+    
+    if (prevBlockId) {
+      blocks[prevBlockId].next = whileBlockId;
+    } else {
+      firstBlockId = whileBlockId;
+    }
+    
+    // 3. Process body
+    let bodyStartId = null;
+    if (node.body) {
+      bodyStartId = convertNode(node.body, whileBlockId);
+    }
+    
+    // 4. Process update statement (if exists) - add at end of body
+    let lastBodyBlockId = bodyStartId;
+    if (bodyStartId) {
+      // Find the last block in the body
+      let current = bodyStartId;
+      while (blocks[current] && blocks[current].next) {
+        current = blocks[current].next;
+      }
+      lastBodyBlockId = current;
+    }
+    
+    if (node.update) {
+      const updateBlockId = convertNode(node.update, lastBodyBlockId || whileBlockId);
+      if (updateBlockId) {
+        if (lastBodyBlockId) {
+          blocks[lastBodyBlockId].next = updateBlockId;
+        } else {
+          bodyStartId = updateBlockId;
+        }
+      }
+    }
+    
+    // Link body to while loop
+    if (bodyStartId) {
+      blocks[whileBlockId].inputs.SUBSTACK = [2, bodyStartId];
+    }
+    
+    return firstBlockId || whileBlockId;
+  }
+
+  /**
+   * Analyze a ForStatement node to extract its components
+   * @param {Object} node - ForStatement AST node
+   * @returns {Object} Analysis result with initVar, initValue, condition, update, type
+   */
+  function analyzeForLoop(node) {
+    let initVar = null;
+    let initValue = null;
+    let condition = node.test;
+    let update = node.update;
+    let type = 'complex';
+
+    // Parse init: can be VariableDeclaration or ExpressionStatement
+    if (node.init) {
+      if (node.init.type === 'VariableDeclaration' && node.init.declarations.length > 0) {
+        const decl = node.init.declarations[0];
+        if (decl.id.type === 'Identifier') {
+          initVar = decl.id.name;
+          initValue = decl.init;
+          variables.add(initVar); // Collect loop variable
+        }
+      } else if (node.init.type === 'ExpressionStatement') {
+        // Expression like i = 0
+        if (node.init.expression.type === 'AssignmentExpression' &&
+            node.init.expression.left.type === 'Identifier') {
+          initVar = node.init.expression.left.name;
+          initValue = node.init.expression.right;
+          variables.add(initVar);
+        }
+      }
+    }
+
+    // Determine if it's a simple loop: for (let i = start; i < end; i++)
+    if (initVar && condition && update) {
+      // Check if condition is a simple comparison: i < n, i <= n, etc.
+      if (condition.type === 'BinaryExpression' &&
+          condition.left.type === 'Identifier' &&
+          condition.left.name === initVar) {
+        // Check if update is i++ or i += n
+        let isSimpleUpdate = false;
+        if (update.type === 'UpdateExpression' &&
+            update.argument.type === 'Identifier' &&
+            update.argument.name === initVar &&
+            update.operator === '++') {
+          isSimpleUpdate = true;
+        } else if (update.type === 'AssignmentExpression' &&
+                   update.left.type === 'Identifier' &&
+                   update.left.name === initVar &&
+                   update.operator === '+=' &&
+                   update.right.type === 'Literal' &&
+                   update.right.value === 1) {
+          isSimpleUpdate = true;
+        }
+
+        if (isSimpleUpdate && 
+            (condition.operator === '<' || condition.operator === '<=')) {
+          type = 'simple';
+        }
+      }
+    }
+
+    return {
+      initVar,
+      initValue,
+      condition,
+      update,
+      type
+    };
+  }
 
   function convertNode(node, parentId = null) {
     if (!node) return null;
@@ -281,6 +525,10 @@ function astToScratchBlocks(ast) {
           if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
             return null;
           }
+          // Skip array declarations - they are handled separately in lists object
+          if (decl.init && decl.init.type === 'ArrayExpression') {
+            return null;
+          }
           blocks[blockId] = {
             opcode: 'data_setvariableto',
             next: null,
@@ -298,7 +546,72 @@ function astToScratchBlocks(ast) {
         return blockId;
 
       case 'FunctionDeclaration':
-        // Skip function declarations - they will be inlined when called
+        // Function declarations: if recursive, create procedure block; otherwise skip (will be inlined)
+        if (recursiveFunctions.has(node.id.name)) {
+          // Create procedures_definition block for recursive functions
+          const procBlockId = generateBlockId();
+          const paramIds = node.params.map((param, idx) => {
+            const paramName = param.name || (param.type === 'Identifier' ? param.name : `param${idx}`);
+            return paramName;
+          });
+          
+          blocks[procBlockId] = {
+            opcode: 'procedures_definition',
+            next: null,
+            parent: parentId,
+            inputs: {},
+            fields: {},
+            shadow: false,
+            topLevel: true,
+            mutation: {
+              tagName: 'mutation',
+              proccode: node.id.name,
+              argumentids: JSON.stringify(paramIds),
+              warp: 'false',
+              children: []
+            }
+          };
+          
+          // Process function body - need to handle return statements specially
+          let bodyStartId = null;
+          if (node.body && node.body.type === 'BlockStatement') {
+            // Convert body statements, but handle return specially
+            let prevStmtId = null;
+            node.body.body.forEach((stmt, idx) => {
+              if (stmt.type === 'ReturnStatement') {
+                // For recursive functions, return values need special handling
+                // For now, we'll just process the return expression
+                if (stmt.argument) {
+                  const returnExprId = convertExpressionToInput(stmt.argument, procBlockId);
+                  // In Scratch procedures, return is implicit - last value is returned
+                  // We'll need to store it in a special variable or handle it differently
+                }
+              } else {
+                const stmtId = convertNode(stmt, procBlockId);
+                if (stmtId) {
+                  if (prevStmtId) {
+                    blocks[prevStmtId].next = stmtId;
+                    blocks[stmtId].parent = prevStmtId;
+                  } else {
+                    bodyStartId = stmtId;
+                  }
+                  prevStmtId = stmtId;
+                }
+              }
+            });
+          }
+          
+          if (bodyStartId) {
+            // Link body to procedure definition
+            // Note: Scratch procedures use a special input structure
+            // For now, we'll store the body start ID in a custom way
+            blocks[procBlockId].next = bodyStartId;
+            blocks[bodyStartId].parent = procBlockId;
+          }
+          
+          return procBlockId;
+        }
+        // Non-recursive functions are skipped (will be inlined when called)
         return null;
 
       case 'ExpressionStatement':
@@ -322,6 +635,68 @@ function astToScratchBlocks(ast) {
           };
           return blockId;
         }
+        
+        // Handle array assignment: arr[i] = value
+        if (node.operator === '=' && 
+            node.left.type === 'MemberExpression' &&
+            node.left.object.type === 'Identifier' &&
+            node.left.computed) {
+          const listName = node.left.object.name;
+          if (lists.has(listName)) {
+            const indexExpr = node.left.property;
+            blocks[blockId] = {
+              opcode: 'data_replaceitemoflist',
+              next: null,
+              parent: parentId,
+              inputs: {
+                INDEX: convertExpressionToInput(indexExpr, blockId),
+                ITEM: convertExpressionToInput(node.right, blockId),
+              },
+              fields: {
+                LIST: [listName, listName],
+              },
+              shadow: false,
+              topLevel: false,
+            };
+            return blockId;
+          }
+        }
+        
+        // Handle object property assignment: obj.prop = value or obj['prop'] = value
+        if (node.operator === '=' && 
+            node.left.type === 'MemberExpression' &&
+            node.left.object.type === 'Identifier') {
+          const objName = node.left.object.name;
+          if (objectMappings.has(objName)) {
+            let propName = null;
+            if (!node.left.computed && node.left.property.type === 'Identifier') {
+              // obj.prop = value
+              propName = node.left.property.name;
+            } else if (node.left.computed && node.left.property.type === 'Literal' &&
+                       typeof node.left.property.value === 'string') {
+              // obj['prop'] = value
+              propName = node.left.property.value;
+            }
+            
+            if (propName) {
+              const flatName = `${objName}_${propName}`;
+              blocks[blockId] = {
+                opcode: 'data_setvariableto',
+                next: null,
+                parent: parentId,
+                inputs: {
+                  VALUE: convertExpressionToInput(node.right, blockId),
+                },
+                fields: {
+                  VARIABLE: [flatName, flatName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              return blockId;
+            }
+          }
+        }
         return null;
 
       case 'CallExpression':
@@ -341,6 +716,62 @@ function astToScratchBlocks(ast) {
               topLevel: false,
             };
             return blockId;
+          }
+        }
+        
+        // Handle array methods: arr.push(), arr.pop(), etc.
+        if (node.callee.type === 'MemberExpression' &&
+            node.callee.object.type === 'Identifier') {
+          const listName = node.callee.object.name;
+          const methodName = node.callee.property.name;
+          
+          if (lists.has(listName)) {
+            if (methodName === 'push' && node.arguments.length > 0) {
+              // arr.push(x) → data_addtolist
+              blocks[blockId] = {
+                opcode: 'data_addtolist',
+                next: null,
+                parent: parentId,
+                inputs: {
+                  ITEM: convertExpressionToInput(node.arguments[0], blockId),
+                },
+                fields: {
+                  LIST: [listName, listName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              return blockId;
+            } else if (methodName === 'pop') {
+              // arr.pop() → data_deleteoflist (last item)
+              const lengthBlockId = generateBlockId();
+              blocks[lengthBlockId] = {
+                opcode: 'data_lengthoflist',
+                next: null,
+                parent: blockId,
+                inputs: {},
+                fields: {
+                  LIST: [listName, listName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              
+              blocks[blockId] = {
+                opcode: 'data_deleteoflist',
+                next: null,
+                parent: parentId,
+                inputs: {
+                  INDEX: [2, lengthBlockId], // Last item
+                },
+                fields: {
+                  LIST: [listName, listName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              return blockId;
+            }
           }
         }
         
@@ -390,20 +821,143 @@ function astToScratchBlocks(ast) {
         return blockId;
 
       case 'ForStatement':
-        // Convert for loop to repeat
-        blocks[blockId] = {
-          opcode: 'control_repeat',
-          next: null,
-          parent: parentId,
-          inputs: {
-            TIMES: [1, [4, '10']],
-            SUBSTACK: node.body ? [2, convertNode(node.body, blockId)] : null,
-          },
-          fields: {},
-          shadow: false,
-          topLevel: false,
-        };
-        return blockId;
+        // Analyze the for loop
+        const forAnalysis = analyzeForLoop(node);
+        
+        if (forAnalysis.type === 'simple' && forAnalysis.initVar && forAnalysis.condition) {
+          // Simple for loop: for (let i = start; i < end; i++)
+          // Convert to: initialize i; repeat (end - start) times { body; increment i; }
+          
+          // Extract end value from condition (i < end or i <= end)
+          const endExpr = forAnalysis.condition.right;
+          const startExpr = forAnalysis.initValue;
+          
+          // Calculate TIMES: end - start (or end - start + 1 for <=)
+          let timesExpr;
+          if (forAnalysis.condition.operator === '<') {
+            // end - start
+            timesExpr = {
+              type: 'BinaryExpression',
+              operator: '-',
+              left: endExpr,
+              right: startExpr
+            };
+          } else if (forAnalysis.condition.operator === '<=') {
+            // end - start + 1
+            timesExpr = {
+              type: 'BinaryExpression',
+              operator: '+',
+              left: {
+                type: 'BinaryExpression',
+                operator: '-',
+                left: endExpr,
+                right: startExpr
+              },
+              right: { type: 'Literal', value: 1 }
+            };
+          } else {
+            // Fallback to complex loop
+            return convertComplexForLoop(node, forAnalysis, parentId);
+          }
+          
+          // Create initialization block for loop variable
+          const initBlockId = generateBlockId();
+          blocks[initBlockId] = {
+            opcode: 'data_setvariableto',
+            next: null,
+            parent: parentId,
+            inputs: {
+              VALUE: convertExpressionToInput(startExpr, initBlockId),
+            },
+            fields: {
+              VARIABLE: [forAnalysis.initVar, forAnalysis.initVar],
+            },
+            shadow: false,
+            topLevel: false,
+          };
+          
+          // Create repeat block
+          blocks[blockId] = {
+            opcode: 'control_repeat',
+            next: null,
+            parent: initBlockId,
+            inputs: {
+              TIMES: convertExpressionToInput(timesExpr, blockId),
+              SUBSTACK: null,
+            },
+            fields: {},
+            shadow: false,
+            topLevel: false,
+          };
+          
+          // Process body
+          let bodyStartId = null;
+          if (node.body) {
+            bodyStartId = convertNode(node.body, blockId);
+          }
+          
+          // Create increment block
+          const incrementBlockId = generateBlockId();
+          let incrementExpr;
+          if (forAnalysis.update.type === 'UpdateExpression' && 
+              forAnalysis.update.operator === '++') {
+            // i++ becomes i = i + 1
+            incrementExpr = {
+              type: 'BinaryExpression',
+              operator: '+',
+              left: { type: 'Identifier', name: forAnalysis.initVar },
+              right: { type: 'Literal', value: 1 }
+            };
+          } else if (forAnalysis.update.type === 'AssignmentExpression' &&
+                     forAnalysis.update.operator === '+=') {
+            // i += n becomes i = i + n
+            incrementExpr = {
+              type: 'BinaryExpression',
+              operator: '+',
+              left: { type: 'Identifier', name: forAnalysis.initVar },
+              right: forAnalysis.update.right
+            };
+          } else {
+            incrementExpr = forAnalysis.update;
+          }
+          
+          blocks[incrementBlockId] = {
+            opcode: 'data_setvariableto',
+            next: null,
+            parent: bodyStartId || blockId,
+            inputs: {
+              VALUE: convertExpressionToInput(incrementExpr, incrementBlockId),
+            },
+            fields: {
+              VARIABLE: [forAnalysis.initVar, forAnalysis.initVar],
+            },
+            shadow: false,
+            topLevel: false,
+          };
+          
+          // Link blocks together
+          blocks[initBlockId].next = blockId;
+          
+          if (bodyStartId) {
+            // Find the last block in the body
+            let lastBodyBlockId = bodyStartId;
+            while (blocks[lastBodyBlockId] && blocks[lastBodyBlockId].next) {
+              lastBodyBlockId = blocks[lastBodyBlockId].next;
+            }
+            blocks[lastBodyBlockId].next = incrementBlockId;
+            blocks[incrementBlockId].parent = lastBodyBlockId;
+            blocks[blockId].inputs.SUBSTACK = [2, bodyStartId];
+          } else {
+            // No body, just increment
+            blocks[blockId].inputs.SUBSTACK = [2, incrementBlockId];
+            blocks[incrementBlockId].parent = blockId;
+          }
+          
+          return initBlockId;
+        } else {
+          // Complex for loop - convert to while loop equivalent
+          return convertComplexForLoop(node, forAnalysis, parentId);
+        }
 
       case 'BlockStatement':
         // Process statements in block
@@ -468,14 +1022,117 @@ function astToScratchBlocks(ast) {
       case 'Identifier':
         return [3, [12, expr.name, expr.name], [10, '']];
       
+      case 'MemberExpression':
+        // Handle array access: arr[i] and arr.length
+        if (expr.object.type === 'Identifier') {
+          const objName = expr.object.name;
+          
+          // Check if it's a list
+          if (lists.has(objName)) {
+            // arr.length
+            if (!expr.computed && expr.property.name === 'length') {
+              const lengthBlockId = generateBlockId();
+              blocks[lengthBlockId] = {
+                opcode: 'data_lengthoflist',
+                next: null,
+                parent: parentBlockId,
+                inputs: {},
+                fields: {
+                  LIST: [objName, objName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              return [2, lengthBlockId];
+            }
+            
+            // arr[i] - array access
+            if (expr.computed) {
+              const indexExpr = expr.property;
+              const itemBlockId = generateBlockId();
+              blocks[itemBlockId] = {
+                opcode: 'data_itemoflist',
+                next: null,
+                parent: parentBlockId,
+                inputs: {
+                  INDEX: convertExpressionToInput(indexExpr, itemBlockId),
+                },
+                fields: {
+                  LIST: [objName, objName],
+                },
+                shadow: false,
+                topLevel: false,
+              };
+              return [2, itemBlockId];
+            }
+          }
+          
+          // Handle object property access: obj.prop or obj['prop']
+          if (objectMappings.has(objName)) {
+            let propName = null;
+            if (!expr.computed && expr.property.type === 'Identifier') {
+              // obj.prop
+              propName = expr.property.name;
+            } else if (expr.computed && expr.property.type === 'Literal' && 
+                       typeof expr.property.value === 'string') {
+              // obj['prop']
+              propName = expr.property.value;
+            }
+            
+            if (propName) {
+              const flatName = `${objName}_${propName}`;
+              // Return reference to flattened variable
+              return [3, [12, flatName, flatName], [10, '']];
+            }
+          }
+        }
+        // For non-array, non-object member expressions, return default
+        return [1, [10, '0']];
+      
       case 'CallExpression':
-<<<<<<< HEAD
-        // Handle function calls by inlining functions
-=======
-        // Handle function calls by inlining functions (both arrow and regular)
->>>>>>> 19f29ad (feat: support comparison operators and function declarations with return)
+        // Handle function calls: recursive functions use procedures_call, others are inlined
         if (expr.callee.type === 'Identifier') {
           const funcName = expr.callee.name;
+          
+          // Check if it's a recursive function
+          if (recursiveFunctions.has(funcName)) {
+            // Create procedures_call block for recursive functions
+            const callBlockId = generateBlockId();
+            const funcDef = functionDefinitions.get(funcName);
+            const paramIds = funcDef ? funcDef.params.map((param, idx) => {
+              const paramName = param.name || (param.type === 'Identifier' ? param.name : `param${idx}`);
+              return paramName;
+            }) : [];
+            
+            // Build inputs for procedure call
+            const inputs = {};
+            paramIds.forEach((paramId, idx) => {
+              if (idx < expr.arguments.length) {
+                inputs[paramId] = convertExpressionToInput(expr.arguments[idx], callBlockId);
+              } else {
+                inputs[paramId] = [1, [4, '0']]; // Default to 0
+              }
+            });
+            
+            blocks[callBlockId] = {
+              opcode: 'procedures_call',
+              next: null,
+              parent: parentBlockId,
+              inputs: inputs,
+              fields: {},
+              shadow: false,
+              topLevel: false,
+              mutation: {
+                tagName: 'mutation',
+                proccode: funcName,
+                argumentids: JSON.stringify(paramIds),
+                warp: 'false'
+              }
+            };
+            return [2, callBlockId];
+          }
+          
+          // Non-recursive function: inline it
           const funcDef = functionDefinitions.get(funcName);
           
           if (funcDef) {
@@ -492,21 +1149,6 @@ function astToScratchBlocks(ast) {
               }
             });
             
-<<<<<<< HEAD
-            // Extract the expression to inline
-            let bodyExpression = funcDef.body;
-            
-            // If the body is a BlockStatement, find the return statement
-            // Note: This only handles simple functions with a single return statement.
-            // Functions with multiple return paths or conditional returns are not fully supported.
-            if (funcDef.body.type === 'BlockStatement') {
-              const returnStmt = funcDef.body.body.find(stmt => stmt.type === 'ReturnStatement');
-              if (returnStmt && returnStmt.argument) {
-                bodyExpression = returnStmt.argument;
-              } else {
-                // No return statement found, default to 0
-                return [1, [10, '0']];
-=======
             // Handle function body - extract return value if it's a block statement
             let bodyExpr = funcDef.body;
             if (bodyExpr.type === 'BlockStatement') {
@@ -517,16 +1159,11 @@ function astToScratchBlocks(ast) {
               } else {
                 // No return statement, default to 0
                 return [1, [4, '0']];
->>>>>>> 19f29ad (feat: support comparison operators and function declarations with return)
               }
             }
             
             // Inline the function body with substituted parameters
-<<<<<<< HEAD
-            const inlinedBody = substituteParameters(bodyExpression, paramMap);
-=======
             const inlinedBody = substituteParameters(bodyExpr, paramMap);
->>>>>>> 19f29ad (feat: support comparison operators and function declarations with return)
             return convertExpressionToInput(inlinedBody, parentBlockId);
           }
         }
@@ -711,7 +1348,7 @@ function astToScratchBlocks(ast) {
   }
 
   convertNode(ast);
-  return { blocks, variables: Array.from(variables) };
+  return { blocks, variables: Array.from(variables), lists: Array.from(lists), objectMappings };
 }
 
 /**
@@ -732,12 +1369,79 @@ function translateToScratch(code) {
     }
 
     // Convert to Scratch blocks
-    const { blocks, variables } = astToScratchBlocks(ast);
+    const { blocks, variables, lists, objectMappings } = astToScratchBlocks(ast);
 
     // Create variables object for Scratch
     const variablesObj = {};
     variables.forEach(varName => {
       variablesObj[varName] = [varName, 0]; // [name, value]
+    });
+
+    // Create lists object for Scratch with initial values
+    const listsObj = {};
+    const arrayInitialValues = new Map(); // Store initial values for arrays
+    const objectInitialValues = new Map(); // Store initial values for objects
+    
+    // Collect initial values from ArrayExpression and ObjectExpression declarations
+    function collectInitialValues(node) {
+      if (!node) return;
+      
+      if (node.type === 'VariableDeclaration') {
+        node.declarations.forEach(decl => {
+          if (decl.init && decl.init.type === 'ArrayExpression') {
+            const values = decl.init.elements.map(elem => {
+              if (elem.type === 'Literal') {
+                return String(elem.value);
+              }
+              return ''; // Non-literal values default to empty string
+            });
+            arrayInitialValues.set(decl.id.name, values);
+          } else if (decl.init && decl.init.type === 'ObjectExpression') {
+            // Store object initial values for flattened variables
+            const objValues = new Map();
+            decl.init.properties.forEach(prop => {
+              if (prop.key.type === 'Identifier' || 
+                  (prop.key.type === 'Literal' && typeof prop.key.value === 'string')) {
+                const propName = prop.key.name || prop.key.value;
+                let propValue = 0;
+                if (prop.value.type === 'Literal') {
+                  propValue = typeof prop.value.value === 'number' ? prop.value.value : 0;
+                }
+                objValues.set(propName, propValue);
+              }
+            });
+            objectInitialValues.set(decl.id.name, objValues);
+          }
+        });
+      }
+      
+      // Traverse children
+      for (const key in node) {
+        if (key === 'loc' || key === 'range') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          child.forEach(collectInitialValues);
+        } else if (child && typeof child === 'object' && child.type) {
+          collectInitialValues(child);
+        }
+      }
+    }
+    
+    collectInitialValues(ast);
+    
+    lists.forEach(listName => {
+      const initialValues = arrayInitialValues.get(listName) || [];
+      listsObj[listName] = [listName, initialValues]; // [name, initialValues]
+    });
+    
+    // Initialize object properties as flattened variables
+    objectMappings.forEach((props, objName) => {
+      const objValues = objectInitialValues.get(objName) || new Map();
+      props.forEach(propName => {
+        const flatName = `${objName}_${propName}`;
+        const value = objValues.get(propName) || 0;
+        variablesObj[flatName] = [flatName, value];
+      });
     });
 
     // Check if blocks contain canvas text operations (looks_say blocks)
@@ -775,7 +1479,7 @@ function translateToScratch(code) {
           isStage: false,
           name: 'Sprite1',
           variables: variablesObj,
-          lists: {},
+          lists: listsObj,
           broadcasts: {},
           blocks: blocks,
           comments: {},

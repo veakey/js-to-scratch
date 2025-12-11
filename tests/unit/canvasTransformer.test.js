@@ -99,5 +99,74 @@ describe('Canvas Transformer', () => {
       // but should not cause errors
       expect(transformed).toContain('scratch_say');
     });
+
+    test('should transform fillRect to scratch_say', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.fillRect(10, 20, 100, 50);
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      expect(transformed).toContain('scratch_say');
+      expect(transformed).toContain('fillRect');
+    });
+
+    test('should transform strokeRect to scratch_say', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.strokeRect(10, 20, 100, 50);
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      expect(transformed).toContain('scratch_say');
+      expect(transformed).toContain('strokeRect');
+    });
+
+    test('should transform arc to scratch_say', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.arc(100, 100, 50, 0, Math.PI * 2);
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      expect(transformed).toContain('scratch_say');
+      expect(transformed).toContain('arc');
+    });
+
+    test('should transform strokeStyle to scratch_stroke_color', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.strokeStyle = 'blue';
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      expect(transformed).toContain('scratch_stroke_color');
+      expect(transformed).toContain('blue');
+    });
+
+    test('should transform lineWidth to scratch_line_width', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 5;
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      expect(transformed).toContain('scratch_line_width');
+      expect(transformed).toContain('5');
+    });
+
+    test('should handle path operations (beginPath, moveTo, lineTo, stroke, fill)', () => {
+      const code = `
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.moveTo(10, 10);
+        ctx.lineTo(50, 50);
+        ctx.stroke();
+      `;
+      
+      const transformed = transformCanvasToScratch(code);
+      // Path operations are skipped but should not cause errors
+      expect(transformed).toBeDefined();
+    });
   });
 });

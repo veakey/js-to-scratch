@@ -97,13 +97,29 @@ Then open your browser to `http://localhost:3000`
 
 The translator supports a subset of JavaScript features that can be mapped to Scratch blocks:
 
-- Variables (`let`, `const`, `var`)
-- Basic arithmetic operations (`+`, `-`, `*`, `/`)
-- Comparison operators (`<`, `>`, `==`, `===`)
-- Control structures:
+- **Variables** (`let`, `const`, `var`)
+- **Arithmetic operations** (`+`, `-`, `*`, `/`)
+- **Comparison operators** (`<`, `>`, `==`, `===`, `!=`, `!==`, `<=`, `>=`)
+- **Unary operators** (`!` - logical not)
+- **Control structures**:
   - `if` statements
   - `while` loops
-  - `for` loops
+  - `for` loops (simple and complex patterns)
+- **Functions**:
+  - Arrow functions: `const f = (a, b) => a + b`
+  - Function declarations: `function f(a, b) { return a + b; }`
+  - Function calls with parameter substitution
+  - **Recursive functions** (detected automatically and converted to Scratch procedures)
+- **Arrays/Lists**:
+  - Array literals: `[1, 2, 3]`
+  - Array access: `arr[i]`, `arr.length`
+  - Array methods: `arr.push(x)`, `arr.pop()`
+  - Array assignment: `arr[i] = value`
+- **Objects** (simple):
+  - Object literals: `{a: 1, b: 2}`
+  - Property access: `obj.prop`, `obj['prop']`
+  - Property assignment: `obj.prop = value`
+  - Objects are flattened to variables: `obj.prop` → `obj_prop`
 
 ### HTML Canvas Support
 
@@ -111,10 +127,20 @@ The translator can extract JavaScript from HTML files and automatically transfor
 
 - **HTML Parsing**: Extracts JavaScript from `<script>` tags in HTML files
 - **Canvas API Transformation**: Converts canvas 2D context operations to Scratch equivalents:
-  - `ctx.fillText()` → Scratch "say" block
-  - `ctx.strokeText()` → Scratch "say" block
-  - `ctx.fillStyle` → `scratch_pen_color` variable
-  - `ctx.font` (size) → `scratch_text_size` variable
+  - **Text operations**:
+    - `ctx.fillText()` → Scratch "say" block
+    - `ctx.strokeText()` → Scratch "say" block
+  - **Styles**:
+    - `ctx.fillStyle` → `scratch_pen_color` variable
+    - `ctx.strokeStyle` → `scratch_stroke_color` variable
+    - `ctx.font` (size) → `scratch_text_size` variable
+    - `ctx.lineWidth` → `scratch_line_width` variable
+  - **Shapes**:
+    - `ctx.fillRect(x, y, w, h)` → Approximation with scratch_say
+    - `ctx.strokeRect(x, y, w, h)` → Approximation with scratch_say
+    - `ctx.arc(x, y, radius, ...)` → Approximation with scratch_say
+  - **Paths**:
+    - `ctx.beginPath()`, `ctx.moveTo()`, `ctx.lineTo()`, `ctx.stroke()`, `ctx.fill()` → Supported (operations tracked)
   - Canvas context initialization (`document.getElementById`, `getContext`) is automatically handled
 
 **Example:**
@@ -168,9 +194,13 @@ let y = 20;
 if (x < y) {
     x = x + 1;
 }
+
+for (let i = 0; i < 5; i++) {
+    y = y + i;
+}
 ```
 
-This code will be successfully translated to Scratch blocks.
+This code will be successfully translated to Scratch blocks with proper for loop handling.
 
 ### Example 2: HTML Canvas (Supported)
 
@@ -201,6 +231,36 @@ console.log(x);         // ✗ Error: Unsupported feature
 ```
 
 This code will throw visible exceptions indicating which features are not supported.
+
+### Example 4: Arrays and Objects (Supported)
+
+```javascript
+let arr = [1, 2, 3];
+let x = arr[0];
+arr.push(4);
+arr[1] = 10;
+
+let obj = {a: 1, b: 2};
+let y = obj.a;
+obj.b = 20;
+```
+
+Arrays are converted to Scratch lists, and objects are flattened to variables (e.g., `obj.a` → `obj_a`).
+
+### Example 5: Recursive Functions (Supported)
+
+```javascript
+function factorial(n) {
+  if (n <= 1) {
+    return 1;
+  }
+  return n * factorial(n - 1);
+}
+
+let result = factorial(5);
+```
+
+Recursive functions are automatically detected and converted to Scratch procedures blocks.
 
 ## Project Structure
 

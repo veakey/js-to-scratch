@@ -128,6 +128,30 @@ function transformCanvasToScratch(code) {
               }
               return null;
             
+            case 'strokeStyle':
+              // Transform: ctx.strokeStyle = 'color' -> scratch_stroke_color = 'color'
+              return {
+                type: 'ExpressionStatement',
+                expression: {
+                  type: 'AssignmentExpression',
+                  operator: '=',
+                  left: { type: 'Identifier', name: 'scratch_stroke_color' },
+                  right: right
+                }
+              };
+            
+            case 'lineWidth':
+              // Transform: ctx.lineWidth = n -> scratch_line_width = n
+              return {
+                type: 'ExpressionStatement',
+                expression: {
+                  type: 'AssignmentExpression',
+                  operator: '=',
+                  left: { type: 'Identifier', name: 'scratch_line_width' },
+                  right: right
+                }
+              };
+            
             case 'textAlign':
             case 'textBaseline':
               // These don't have direct Scratch equivalents, skip them
@@ -180,8 +204,77 @@ function transformCanvasToScratch(code) {
               return null;
             
             case 'fillRect':
-              // Transform: ctx.fillRect(x, y, w, h)
-              // Could be represented as pen operations
+              // Transform: ctx.fillRect(x, y, w, h) → use motion blocks to approximate
+              // For now, we'll create a simple transformation that uses scratch_say
+              // In a full implementation, this could use pen extension or motion blocks
+              if (args.length >= 4) {
+                return {
+                  type: 'ExpressionStatement',
+                  expression: {
+                    type: 'CallExpression',
+                    callee: { type: 'Identifier', name: 'scratch_say' },
+                    arguments: [
+                      { type: 'Literal', value: `fillRect(${args[0]?.value || 'x'}, ${args[1]?.value || 'y'}, ${args[2]?.value || 'w'}, ${args[3]?.value || 'h'})` }
+                    ]
+                  }
+                };
+              }
+              return null;
+            
+            case 'strokeRect':
+              // Transform: ctx.strokeRect(x, y, w, h) → similar to fillRect
+              if (args.length >= 4) {
+                return {
+                  type: 'ExpressionStatement',
+                  expression: {
+                    type: 'CallExpression',
+                    callee: { type: 'Identifier', name: 'scratch_say' },
+                    arguments: [
+                      { type: 'Literal', value: `strokeRect(${args[0]?.value || 'x'}, ${args[1]?.value || 'y'}, ${args[2]?.value || 'w'}, ${args[3]?.value || 'h'})` }
+                    ]
+                  }
+                };
+              }
+              return null;
+            
+            case 'arc':
+              // Transform: ctx.arc(x, y, radius, startAngle, endAngle) → approximation
+              if (args.length >= 3) {
+                return {
+                  type: 'ExpressionStatement',
+                  expression: {
+                    type: 'CallExpression',
+                    callee: { type: 'Identifier', name: 'scratch_say' },
+                    arguments: [
+                      { type: 'Literal', value: `arc(${args[0]?.value || 'x'}, ${args[1]?.value || 'y'}, ${args[2]?.value || 'radius'})` }
+                    ]
+                  }
+                };
+              }
+              return null;
+            
+            case 'beginPath':
+              // Start a new path - just track it, no transformation needed
+              return null;
+            
+            case 'moveTo':
+              // ctx.moveTo(x, y) - could use motion_gotoxy in full implementation
+              // For now, just skip it
+              return null;
+            
+            case 'lineTo':
+              // ctx.lineTo(x, y) - could use motion blocks in full implementation
+              // For now, just skip it
+              return null;
+            
+            case 'stroke':
+              // ctx.stroke() - draw the path
+              // For now, just skip it
+              return null;
+            
+            case 'fill':
+              // ctx.fill() - fill the path
+              // For now, just skip it
               return null;
             
             default:
